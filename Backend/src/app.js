@@ -10,20 +10,28 @@ const app = express();
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://fleetbookingportal.netlify.app"
+];
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000", 
-      "http://localhost:5173",
-      "https://fleetbookingportal.netlify.app"
-    ],
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow Postman / backend calls
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
     credentials: true
   })
 );
 
-app.options("*", cors());
 
 app.use(
   helmet({
