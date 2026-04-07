@@ -11,15 +11,6 @@ const app = express();
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 
-
-
-app.use(
-  helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-    contentSecurityPolicy: false
-  })
-);
-
 app.use(
   cors({
     origin: [
@@ -33,6 +24,15 @@ app.use(
 );
 
 app.options("*", cors());
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false
+  })
+);
+
+
 
 app.use(express.json({
   limit: "1mb"
@@ -77,7 +77,10 @@ const apiLimiter = rateLimit({
     error: "Too many requests. Please try again later."
   }
 });
-app.use("/api", apiLimiter);
+app.use("/api", (req, res, next) => {
+  if (req.method === "OPTIONS") return next();
+  return apiLimiter(req, res, next);
+});
 
 app.get("/test-email", async (req, res) => {
   try {
