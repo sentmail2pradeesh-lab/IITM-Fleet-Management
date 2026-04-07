@@ -25,7 +25,7 @@ app.use(
     origin: [
       "http://localhost:3000", 
       "http://localhost:5173",
-      "https://iitm-vehicle-system.com"
+      "https://fleetbookingportal.netlify.app"
     ],
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
     credentials: true
