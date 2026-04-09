@@ -12,15 +12,6 @@ const [vehicles,setVehicles] = useState([]);
 const [selectedVehicle, setSelectedVehicle] = useState(null);
 const navigate = useNavigate();
 
-const typeCounts = useMemo(() => {
-  const counts = {};
-  for (const v of vehicles) {
-    const key = v.vehicle_type || "Unknown";
-    counts[key] = (counts[key] || 0) + 1;
-  }
-  return counts;
-}, [vehicles]);
-
 const groupedVehicles = useMemo(() => {
   const byType = {};
   for (const v of vehicles) {
@@ -30,7 +21,6 @@ const groupedVehicles = useMemo(() => {
   }
   return Object.entries(byType).map(([type, list]) => ({
     type,
-    count: list.length,
     representative: list[0]
   }));
 }, [vehicles]);
@@ -95,13 +85,9 @@ return(
       <div className="bg-white rounded-xl p-4 mb-6 text-slate-800 shadow-[0_4px_16px_rgba(16,24,40,0.08)]">
         <h2 className="text-lg font-semibold mb-2">Vehicles by type</h2>
         <div className="flex flex-wrap gap-3">
-          {Object.entries(typeCounts).map(([type, count]) => (
-            <div
-              key={type}
-              className="px-3 py-1 rounded-full bg-slate-100 text-sm"
-            >
-              <span className="font-medium">{type}</span>
-              <span className="ml-2 text-slate-500">{count} vehicle(s)</span>
+          {groupedVehicles.map((g) => (
+            <div key={g.type} className="px-3 py-1 rounded-full bg-slate-100 text-sm font-medium">
+              {g.type}
             </div>
           ))}
         </div>
@@ -113,8 +99,6 @@ return(
             key={g.type}
             vehicle={g.representative}
             selectedDate=""
-            availableCount={g.count}
-            groupedByType
             onSelect={(vehicle) => setSelectedVehicle(vehicle)}
           />
         ))}
@@ -130,7 +114,7 @@ return(
             <b>Capacity:</b> {selectedVehicle.passenger_capacity} members
           </p>
           <button
-            onClick={() => navigate(`/booking/${selectedVehicle.id}`)}
+            onClick={() => navigate(`/vehicle/${selectedVehicle.id}`)}
             className="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600"
           >
             Continue

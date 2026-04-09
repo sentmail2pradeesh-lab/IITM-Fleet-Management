@@ -1,5 +1,6 @@
 import { createContext, useMemo, useState } from "react";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext();
 
 function decodeJwtPayload(token) {
@@ -18,11 +19,18 @@ function decodeJwtPayload(token) {
   }
 }
 
+function normalizeRole(rawRole) {
+  if (rawRole === "approver") return "oic";
+  return rawRole;
+}
+
 export const AuthProvider = ({ children }) => {
 
 const [user, setUser] = useState(() => {
   try {
-    return JSON.parse(localStorage.getItem("user"));
+    // Clear old persistence format to avoid stale cross-user role/token pickup.
+    localStorage.removeItem("user");
+    return JSON.parse(sessionStorage.getItem("user"));
   } catch {
     return null;
   }
@@ -33,16 +41,16 @@ const login = (data) => {
   const payload = token ? decodeJwtPayload(token) : null;
   const next = {
     token,
-    role: data?.role ?? payload?.role,
+    role: normalizeRole(data?.role ?? payload?.role),
     id: data?.id ?? payload?.id
   };
   setUser(next);
-  localStorage.setItem("user", JSON.stringify(next));
+  sessionStorage.setItem("user", JSON.stringify(next));
 };
 
 const logout = () => {
   setUser(null);
-  localStorage.removeItem("user");
+  sessionStorage.removeItem("user");
 };
 
 const isAuthenticated = useMemo(() => Boolean(user?.token), [user?.token]);

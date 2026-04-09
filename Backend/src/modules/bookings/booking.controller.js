@@ -273,6 +273,7 @@ const approve = async (req, res, next) => {
 
   try {
     const bookingId = req.params.id;
+    const actorRole = req.user?.role === "approver" ? "oic" : req.user?.role;
 
     await client.query("BEGIN");
 
@@ -288,11 +289,15 @@ const approve = async (req, res, next) => {
     }
 
     const booking = bookingData.rows[0];
-    // Stage 2 -> Stage 3 (Transport Supervisor allotment): only allow from Guide Approved
-    if (!["Guide Approved"].includes(booking.status)) {
+    const allowedStatuses =
+      actorRole === "supervisor"
+        ? ["Guide Approved"]
+        : ["Pending OIC Approval", "Guide Approved"];
+
+    if (!allowedStatuses.includes(booking.status)) {
       await client.query("ROLLBACK");
       return res.status(400).json({
-        message: `Cannot supervisor-approve booking in ${booking.status} state`
+        message: `Cannot approve booking in ${booking.status} state for role ${actorRole}`
       });
     }
 
@@ -310,22 +315,25 @@ const approve = async (req, res, next) => {
       });
     }
 
+    const nextStatus = actorRole === "supervisor" ? "Pending OIC Approval" : "Approved";
+
     // Update booking status
     const result = await client.query(
       `UPDATE bookings
-       SET status = 'Approved'
+       SET status = $2
        WHERE id = $1
        RETURNING *`,
-      [bookingId]
+      [bookingId, nextStatus]
     );
 
-    // Update vehicle status
-    await client.query(
-      `UPDATE vehicles
-       SET status = 'Booked'
-       WHERE id = $1`,
-      [booking.vehicle_id]
-    );
+    if (nextStatus === "Approved") {
+      await client.query(
+        `UPDATE vehicles
+         SET status = 'Booked'
+         WHERE id = $1`,
+        [booking.vehicle_id]
+      );
+    }
 
     await client.query("COMMIT");
 
@@ -334,9 +342,9 @@ const approve = async (req, res, next) => {
     await logAction({
       bookingId: updatedBooking.id,
       performedBy: req.user.id,
-      action: "BOOKING_APPROVED",
+      action: nextStatus === "Approved" ? "BOOKING_APPROVED" : "SENT_TO_OIC",
       oldStatus: booking.status,
-      newStatus: "Approved",
+      newStatus: nextStatus,
       ip: req.ip
     });
 
@@ -352,11 +360,18 @@ const approve = async (req, res, next) => {
     try {
       await emailService.sendEmail({
   to: user.email,
-  subject: "Booking approved by Transport Cell Supervisor",
+        subject:
+          nextStatus === "Approved"
+            ? "Booking approved by Officer In-charge"
+            : "Booking sent to Officer In-charge for approval",
   text: `
 Dear ${user.name},
 
-Your booking has been approved by Transport Cell Supervisor.
+Your booking has been ${
+  nextStatus === "Approved"
+    ? "approved by Officer In-charge."
+    : "processed by Supervisor and sent to Officer In-charge for final approval."
+}
 
 Vehicle ID: ${updatedBooking.vehicle_id}
 Start Time: ${updatedBooking.start_time}

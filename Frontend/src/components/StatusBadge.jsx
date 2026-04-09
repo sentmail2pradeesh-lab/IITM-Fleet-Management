@@ -9,6 +9,7 @@ function StatusBadge({ status }) {
     pending:                    "bg-amber-50  text-amber-800  before:bg-amber-400",
     pending_guide_approval:     "bg-amber-50  text-amber-800  before:bg-amber-400",
     guide_approved:             "bg-teal-50   text-teal-800   before:bg-teal-500",
+    pending_oic_approval:       "bg-violet-50 text-violet-800 before:bg-violet-500",
     approved:                   "bg-blue-50   text-blue-800   before:bg-blue-500",
     rejected:                   "bg-red-50    text-red-800    before:bg-red-500",
     cancelled:                  "bg-red-50    text-red-800    before:bg-red-400",

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useContext } from "react";
 import {
   addVehiclesBulk,
   deleteVehicle,
@@ -6,6 +7,7 @@ import {
   setVehicleStatus,
   updateVehicle
 } from "../../api/vehicleApi";
+import { AuthContext } from "../../context/AuthContext";
 
 const VEHICLE_TYPES = [
   { value: "E-CART-AC",     label: "E-cart AC",    category: "CART" },
@@ -21,6 +23,9 @@ function apiImg(path) {
 }
 
 export default function Vehicles() {
+  const { user } = useContext(AuthContext);
+  const role = user?.role === "approver" ? "oic" : user?.role;
+  const canAddVehicles = role === "oic";
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -247,6 +252,12 @@ export default function Vehicles() {
 
       <div className="bg-white/10 rounded-xl p-4 mb-6">
         <h2 className="font-semibold mb-3">Add vehicles</h2>
+        {!canAddVehicles && (
+          <p className="text-sm text-white/80 mb-3">
+            Only Officer In-charge can add new vehicles.
+          </p>
+        )}
+        {canAddVehicles && (
         <form onSubmit={onAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm text-white/90 mb-1">Vehicle type *</label>
@@ -387,6 +398,7 @@ export default function Vehicles() {
             </button>
           </div>
         </form>
+        )}
       </div>
 
       {typeStats.length > 0 && (

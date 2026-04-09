@@ -19,7 +19,9 @@ function NavLink({ to, children }) {
 
 export default function ApproverLayout() {
   const navigate = useNavigate();
-  const { logout } = useContext(AuthContext);
+  const { logout, user } = useContext(AuthContext);
+  const role = user?.role === "approver" ? "oic" : user?.role;
+  const isOic = role === "oic";
 
   return (
     <div className="min-h-screen bg-[#f4f6f9]">
@@ -32,7 +34,7 @@ export default function ApproverLayout() {
               IIT Madras
             </div>
             <div className="text-lg font-semibold text-white">
-                Transport Supervisor Panel
+              {isOic ? "Officer In-charge Panel" : "Transport Supervisor Panel"}
             </div>
           </div>
 
@@ -45,8 +47,9 @@ export default function ApproverLayout() {
             <div className="text-xs uppercase text-white/60 px-1 mt-4 mb-1">
               Fleet
             </div>
-            <NavLink to="/approver/vehicles">Vehicles (add / manage)</NavLink>
+            <NavLink to="/approver/vehicles">Vehicles</NavLink>
             <NavLink to="/approver/bookings">All bookings</NavLink>
+            {isOic && <NavLink to="/approver/users">Users (drivers/supervisors)</NavLink>}
 
             <div className="text-xs uppercase text-white/60 px-1 mt-4 mb-1">
               Reports
@@ -73,7 +76,9 @@ export default function ApproverLayout() {
           <div className="h-[100px] bg-[#1a2a4a] relative overflow-hidden">
             <div className="absolute inset-y-0 right-0 w-1/3 opacity-20 bg-[url('/bus.jpg')] bg-cover bg-center" />
             <div className="h-full px-6 flex items-center">
-              <h1 className="text-white text-2xl font-semibold">Transport Supervisor Dashboard</h1>
+              <h1 className="text-white text-2xl font-semibold">
+                {isOic ? "Officer In-charge Dashboard" : "Transport Supervisor Dashboard"}
+              </h1>
             </div>
           </div>
           <div className="p-6">

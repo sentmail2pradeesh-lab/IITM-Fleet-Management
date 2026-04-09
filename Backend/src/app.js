@@ -78,6 +78,9 @@ app.use("/api/whatsapp", whatsappRoutes);
 const reportRoutes = require("./modules/reports/report.routes");
 app.use("/api/reports", reportRoutes);
 
+const userRoutes = require("./modules/users/users.routes");
+app.use("/api/users", userRoutes);
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,

@@ -102,6 +102,7 @@ const getPendingBookings = async () => {
      LEFT JOIN vehicles v ON b.vehicle_id = v.id
      WHERE b.status IN (
        'Guide Approved',
+       'Pending OIC Approval',
        'Approved',
        'Cancellation Requested'
      )

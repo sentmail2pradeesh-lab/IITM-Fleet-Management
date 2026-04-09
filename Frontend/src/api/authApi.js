@@ -30,7 +30,7 @@ export const resetPasswordOtp = (data) =>
 
 // Fetch authenticated user's profile/role from backend
 export const getMe = () => {
-  const raw = localStorage.getItem("user");
+  const raw = sessionStorage.getItem("user");
   const token = (() => {
     try {
       const user = JSON.parse(raw);

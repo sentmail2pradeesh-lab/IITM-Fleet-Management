@@ -43,7 +43,7 @@ export default function VehicleDetails() {
     );
   }
 
-  const images = [apiImg(vehicle.image1), apiImg(vehicle.image2), apiImg(vehicle.image3)].filter(Boolean);
+  const images = [apiImg(vehicle.image1), apiImg(vehicle.image2), apiImg(vehicle.image3)];
 
   return (
     <div className="min-h-screen bg-[#f4f6f9]">
@@ -70,18 +70,20 @@ export default function VehicleDetails() {
         </div>
 
         <div className="flex justify-center gap-6 mb-8">
-          {images.length > 0 ? (
-            images.map((src) => (
+          {images.map((src, idx) =>
+            src ? (
               <img
-                key={src}
+                key={`${src}-${idx}`}
                 src={src}
                 className="w-28 h-24 rounded-xl object-cover cursor-pointer hover:scale-105 transition"
                 onClick={() => setActiveImage(src)}
                 alt="Vehicle"
               />
-            ))
-          ) : (
-            <div className="text-slate-500 text-sm">No images available</div>
+            ) : (
+              <div key={`empty-${idx}`} className="w-28 h-24 rounded-xl border border-dashed border-slate-300 grid place-items-center text-xs text-slate-500">
+                Image {idx + 1}
+              </div>
+            )
           )}
         </div>
 

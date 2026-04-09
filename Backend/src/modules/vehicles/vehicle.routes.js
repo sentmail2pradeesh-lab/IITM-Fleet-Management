@@ -95,7 +95,7 @@ router.get(
 router.post(
   '/',
   verifyToken,
-  allowRole('approver'),
+  allowRole(['oic', 'approver']),
   uploadVehicleImages,
   addVehicle
 );
@@ -103,7 +103,7 @@ router.post(
 router.post(
   '/bulk',
   verifyToken,
-  allowRole('approver'),
+  allowRole(['oic', 'approver']),
   uploadVehicleImages,
   addVehiclesBulk
 );
@@ -127,7 +127,7 @@ router.post(
 router.patch(
   '/:id',
   verifyToken,
-  allowRole('approver'),
+  allowRole(['oic', 'approver']),
   uploadVehicleImages,
   updateVehicleById
 );
@@ -135,7 +135,7 @@ router.patch(
 router.put(
   '/:id/status',
   verifyToken,
-  allowRole('approver'),
+  allowRole(['oic', 'approver']),
   changeVehicleStatus
 );
 
@@ -151,7 +151,7 @@ router.put(
 router.delete(
   "/:id",
   verifyToken,
-  allowRole("approver"),
+  allowRole(["oic", "approver"]),
   removeVehicle
 );
 

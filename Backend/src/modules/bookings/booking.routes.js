@@ -92,14 +92,14 @@ router.post(
 router.get(
   '/pending',
   verifyToken,
-  allowRole(['approver', 'supervisor']),
+  allowRole(['oic', 'approver', 'supervisor']),
   viewPending
 );
 
 router.get(
   "/upcoming",
   verifyToken,
-  allowRole(["approver", "supervisor"]),
+  allowRole(["oic", "approver", "supervisor"]),
   viewUpcoming
 );
 
@@ -122,7 +122,7 @@ router.get(
 router.get(
   "/",
   verifyToken,
-  allowRole(["approver", "supervisor"]),
+  allowRole(["oic", "approver", "supervisor"]),
   listAllBookings
 );
 
@@ -168,7 +168,7 @@ router.patch(
 router.patch(
   '/:id/approve',
   verifyToken,
-  allowRole(['approver', 'supervisor']),
+  allowRole(['oic', 'approver', 'supervisor']),
   approve
 );
 
@@ -193,7 +193,7 @@ router.patch(
 router.patch(
   '/:id/reject',
   verifyToken,
-  allowRole(['approver', 'supervisor']),
+  allowRole(['oic', 'approver', 'supervisor']),
   reject
 );
 
@@ -244,7 +244,7 @@ router.patch(
 router.put(
   '/:id/assign',
   verifyToken,
-  allowRole(['approver', 'supervisor']),
+  allowRole(['oic', 'approver', 'supervisor']),
   validate(assignDriverSchema),
   assignDriver
 );
@@ -267,14 +267,14 @@ router.put(
 router.patch(
   "/:id/reassign",
   verifyToken,
-  allowRole(["approver", "supervisor"]),
+  allowRole(["oic", "approver", "supervisor"]),
   asyncHandler(reassignVehicle)
 );
 
 router.patch(
   "/:id/report-issue",
   verifyToken,
-  allowRole(["approver", "supervisor"]),
+  allowRole(["oic", "approver", "supervisor"]),
   asyncHandler(reportIssue)
 );
 

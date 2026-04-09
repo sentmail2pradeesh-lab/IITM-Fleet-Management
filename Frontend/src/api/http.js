@@ -5,7 +5,7 @@ const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api"
 export const http = axios.create({ baseURL });
 
 http.interceptors.request.use((config) => {
-  const raw = localStorage.getItem("user");
+  const raw = sessionStorage.getItem("user");
   if (!raw) return config;
 
   try {
@@ -16,7 +16,7 @@ http.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
   } catch {
-    // ignore malformed localStorage
+    // ignore malformed sessionStorage
   }
 
   return config;

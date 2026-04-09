@@ -263,7 +263,9 @@ const verifyOTP = async (req,res,next)=>{
 
     // Ensure JWT `role` matches backend allowRole checks.
     let mappedRole = "requester";
-    if (user_type === "approver" || user_type === "supervisor") {
+    if (user_type === "approver") {
+      mappedRole = "oic";
+    } else if (user_type === "supervisor") {
       mappedRole = "supervisor";
     } else if (user_type === "guide_hod") {
       mappedRole = "guide_hod";
@@ -314,11 +316,12 @@ const me = async (req, res, next) => {
     }
 
     const user = result.rows[0];
+    const role = user.role === "approver" ? "oic" : user.role;
     res.json({
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role,
+      role,
     });
   } catch (err) {
     next(err);

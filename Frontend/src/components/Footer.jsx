@@ -27,6 +27,12 @@ export default function Footer() {
       { to: "/approver/vehicles", label: "Vehicles" },
       { to: "/approver/reports", label: "Usage Reports" }
     ],
+    oic: [
+      { to: "/approver/pending", label: "Pending Requests" },
+      { to: "/approver/bookings", label: "All Bookings" },
+      { to: "/approver/vehicles", label: "Vehicles" },
+      { to: "/approver/users", label: "Users" }
+    ],
     admin: [
       { to: "/admin/dashboard", label: "Admin Dashboard" }
     ],
@@ -115,11 +121,12 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Admin & Reporting */}
+          {/* Portal */}
           <div className="p-6">
-            <div className="text-sm font-semibold text-white mb-4">Role</div>
-            <div className="flex flex-col gap-3 text-sm text-white/70">
-              <span>{role === "guest" ? "Not logged in" : role.replace("_", " ")}</span>
+            <div className="text-sm font-semibold text-white mb-4">Portal</div>
+            <div className="flex flex-col gap-2 text-sm text-white/70">
+              <span>IIT Madras Transport Office</span>
+              <span>Fleet Booking & Assignment System</span>
             </div>
           </div>
         </div>

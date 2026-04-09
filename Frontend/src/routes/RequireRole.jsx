@@ -13,7 +13,7 @@ export default function RequireRole({ role }) {
   const roles = Array.isArray(role) ? role : [role];
   if (role && !roles.includes(effectiveRole)) {
     const target =
-      effectiveRole === "approver" || effectiveRole === "supervisor"
+      effectiveRole === "approver" || effectiveRole === "supervisor" || effectiveRole === "oic"
         ? "/approver"
         : effectiveRole === "guide_hod"
           ? "/guide/pending"

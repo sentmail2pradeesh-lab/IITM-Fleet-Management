@@ -47,7 +47,7 @@ function Login() {
       const target =
         role === "guide_hod"
           ? "/guide/pending"
-          : role === "approver" || role === "supervisor"
+          : role === "approver" || role === "supervisor" || role === "oic"
             ? "/approver"
             : role === "admin"
               ? "/admin/dashboard"
@@ -149,6 +149,22 @@ function Login() {
               >
                 Forgot password?
               </button>
+            </div>
+
+            <div className="mt-6 border-t border-slate-200 pt-4 text-xs text-slate-600 space-y-1">
+              <p className="font-medium text-slate-700">Booking queries</p>
+              <p>
+                Email:{" "}
+                <a className="underline" href="mailto:transport-office@iitm.ac.in">
+                  transport-office@iitm.ac.in
+                </a>
+              </p>
+              <p>
+                Phone:{" "}
+                <a className="underline" href="tel:+910000000000">
+                  +91-00000-00000
+                </a>
+              </p>
             </div>
           </form>
         </div>

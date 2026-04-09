@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom"
 
-function VehicleCard({vehicle, selectedDate, availableCount, groupedByType, onSelect}){
+function VehicleCard({vehicle, selectedDate, onSelect}){
 
 const navigate = useNavigate()
 
@@ -27,12 +27,6 @@ transition
 <p className="text-sm mt-2">
 {vehicle.passenger_capacity} members capacity
 </p>
-
-{groupedByType && (
-  <p className="text-xs mt-1 text-white/90">
-    {availableCount} vehicle{availableCount === 1 ? "" : "s"} available
-  </p>
-)}
 
 <button
 onClick={() => {

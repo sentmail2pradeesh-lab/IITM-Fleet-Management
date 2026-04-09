@@ -21,13 +21,16 @@ import GuideLayout from "./pages/guide/GuideLayout";
 import GuidePending from "./pages/guide/GuidePending";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import DriverDashboard from "./pages/driver/DriverDashboard";
+import UserManagement from "./pages/approver/UserManagement";
 
 function App() {
   const LocationAware = () => {
     const location = useLocation();
+    const hideFooter = location.pathname === "/" || location.pathname === "/login";
     return (
-      <div key={location.pathname} className="page-fade flex-1">
-        <Routes>
+      <>
+        <div key={location.pathname} className="page-fade flex-1">
+          <Routes>
           {/* Auth Routes */}
           <Route path="/" element={<Login />} />
           <Route path="/login" element={<Login />} />
@@ -52,13 +55,14 @@ function App() {
             </Route>
 
             {/* Approver Routes (Transport Supervisor) */}
-            <Route element={<RequireRole role={["approver", "supervisor"]} />}>
+            <Route element={<RequireRole role={["oic", "approver", "supervisor"]} />}>
               <Route element={<ApproverLayout />}>
                 <Route path="/approver" element={<PendingRequests />} />
                 <Route path="/approver/pending" element={<PendingRequests />} />
                 <Route path="/approver/vehicles" element={<Vehicles />} />
                 <Route path="/approver/bookings" element={<AllBookings />} />
                 <Route path="/approver/reports" element={<Reports />} />
+                <Route path="/approver/users" element={<UserManagement />} />
               </Route>
             </Route>
 
@@ -72,8 +76,10 @@ function App() {
               <Route path="/driver/dashboard" element={<DriverDashboard />} />
             </Route>
           </Route>
-        </Routes>
-      </div>
+          </Routes>
+        </div>
+        {!hideFooter && <Footer />}
+      </>
     );
   };
 
@@ -81,7 +87,6 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen flex flex-col">
         <LocationAware />
-        <Footer />
       </div>
     </BrowserRouter>
   );

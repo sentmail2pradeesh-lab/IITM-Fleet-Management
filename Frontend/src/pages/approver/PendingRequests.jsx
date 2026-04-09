@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useContext } from "react";
 import StatusBadge from "../../components/StatusBadge";
 import {
   approveBooking,
@@ -10,8 +11,10 @@ import {
   reportIssue
 } from "../../api/bookingApi";
 import { getAvailableVehicles } from "../../api/vehicleApi";
+import { listUsers } from "../../api/userApi";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import SuccessCheck from "../../components/SuccessCheck";
+import { AuthContext } from "../../context/AuthContext";
 
 function formatDT(value) {
   try {
@@ -24,6 +27,9 @@ function formatDT(value) {
 }
 
 export default function PendingRequests() {
+  const { user } = useContext(AuthContext);
+  const role = user?.role === "approver" ? "oic" : user?.role;
+  const isOic = role === "oic";
   const [pendingRows, setPendingRows] = useState([]);
   const [upcomingRows, setUpcomingRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -32,6 +38,7 @@ export default function PendingRequests() {
   const [assignBooking, setAssignBooking] = useState(null);
   const [assignName, setAssignName] = useState("");
   const [assignPhone, setAssignPhone] = useState("");
+  const [drivers, setDrivers] = useState([]);
   const [assignSubmitting, setAssignSubmitting] = useState(false);
 
   const [reassignBooking, setReassignBooking] = useState(null);
@@ -59,6 +66,8 @@ export default function PendingRequests() {
       ]);
       setPendingRows(pendingRes.data || []);
       setUpcomingRows(upcomingRes.data || []);
+      const driverRes = await listUsers("driver");
+      setDrivers(driverRes.data || []);
     } catch (e) {
       setError(e?.response?.data?.message || "Failed to load bookings");
     } finally {
@@ -188,7 +197,7 @@ export default function PendingRequests() {
     setReportSubmitting(true);
     setError("");
     try {
-      const res = await reportIssue(reportIssueBooking.id, {
+      await reportIssue(reportIssueBooking.id, {
         reason: reportReason.trim(),
         mark_unavailable: markUnavailable
       });
@@ -207,7 +216,9 @@ export default function PendingRequests() {
   return (
     <div className="text-slate-800">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Transport Supervisor Dashboard</h1>
+        <h1 className="text-2xl font-semibold">
+          {isOic ? "Officer In-charge Dashboard" : "Transport Supervisor Dashboard"}
+        </h1>
         <button
           onClick={refresh}
           className="bg-[#1a2a4a] hover:bg-[#21385f] text-white px-4 py-2 rounded soft-transition-long"
@@ -246,7 +257,8 @@ export default function PendingRequests() {
           <tbody>
             {pending.map((b) => {
               const isCancellation = b.status === "Cancellation Requested";
-              const canApproveStage3 = b.status === "Guide Approved";
+              const canSupervisorForward = !isOic && b.status === "Guide Approved";
+              const canFinalApprove = isOic && (b.status === "Pending OIC Approval" || b.status === "Guide Approved");
               const canAssignDriver = b.status === "Approved";
               return (
                 <tr key={b.id} className="border-t border-slate-100">
@@ -273,14 +285,14 @@ export default function PendingRequests() {
                   </td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-2">
-                      {canApproveStage3 && (
+                      {canSupervisorForward && (
                         <>
                           <button
                             disabled={busyId === b.id}
                             onClick={() => onApprove(b.id)}
                             className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded disabled:opacity-60 soft-transition-long"
                           >
-                            Approve & Assign Vehicle
+                            Send to OIC
                           </button>
                           <button
                             disabled={busyId === b.id}
@@ -290,6 +302,15 @@ export default function PendingRequests() {
                             Reject
                           </button>
                         </>
+                      )}
+                      {canFinalApprove && (
+                        <button
+                          disabled={busyId === b.id}
+                          onClick={() => onApprove(b.id)}
+                          className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded disabled:opacity-60 soft-transition-long"
+                        >
+                          Final Approve
+                        </button>
                       )}
 
                       {canAssignDriver && (
@@ -425,13 +446,22 @@ export default function PendingRequests() {
                 <label className="block text-gray-700 font-medium mb-1.5">
                   Driver name
                 </label>
-                <input
-                  type="text"
+                <select
                   value={assignName}
-                  onChange={(e) => setAssignName(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 bg-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Enter driver full name"
-                />
+                  onChange={(e) => {
+                    const selected = drivers.find((d) => d.name === e.target.value);
+                    setAssignName(e.target.value);
+                    if (selected?.phone) setAssignPhone(selected.phone);
+                  }}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 bg-white"
+                >
+                  <option value="">Select available driver</option>
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.name}>
+                      {d.name} ({d.email})
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-gray-700 font-medium mb-1.5">
