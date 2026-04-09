@@ -13,6 +13,12 @@ function formatDT(value) {
   }
 }
 
+function toDocUrl(path) {
+  if (!path) return "";
+  if (String(path).startsWith("http")) return path;
+  return `http://localhost:5000/${String(path).replace(/\\/g, "/")}`;
+}
+
 export default function GuidePending() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -84,6 +90,8 @@ export default function GuidePending() {
               <th className="p-3">Vehicle</th>
               <th className="p-3">Start</th>
               <th className="p-3">End</th>
+              <th className="p-3">Status</th>
+              <th className="p-3">Document</th>
               <th className="p-3">Actions</th>
             </tr>
           </thead>
@@ -100,29 +108,48 @@ export default function GuidePending() {
                 </td>
                 <td className="p-3">{formatDT(b.start_time)}</td>
                 <td className="p-3">{formatDT(b.end_time)}</td>
+                <td className="p-3">{b.status}</td>
                 <td className="p-3">
-                  <div className="flex gap-2">
-                    <button
-                      disabled={busyId === b.id}
-                      onClick={() => onApprove(b.id)}
-                      className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded disabled:opacity-60"
+                  {b.document_url ? (
+                    <a
+                      href={toDocUrl(b.document_url)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-700 underline"
                     >
-                      Approve
-                    </button>
-                    <button
-                      disabled={busyId === b.id}
-                      onClick={() => onReject(b.id)}
-                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded disabled:opacity-60"
-                    >
-                      Reject
-                    </button>
-                  </div>
+                      View
+                    </a>
+                  ) : (
+                    <span className="text-gray-500">-</span>
+                  )}
+                </td>
+                <td className="p-3">
+                  {b.status === "Pending Guide Approval" ? (
+                    <div className="flex gap-2">
+                      <button
+                        disabled={busyId === b.id}
+                        onClick={() => onApprove(b.id)}
+                        className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded disabled:opacity-60"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        disabled={busyId === b.id}
+                        onClick={() => onReject(b.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded disabled:opacity-60"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-600">Awaiting supervisor cancellation action</span>
+                  )}
                 </td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
               <tr>
-                <td className="p-6 text-gray-600" colSpan={6}>
+                <td className="p-6 text-gray-600" colSpan={8}>
                   No pending approvals at Guide / HoD level.
                 </td>
               </tr>

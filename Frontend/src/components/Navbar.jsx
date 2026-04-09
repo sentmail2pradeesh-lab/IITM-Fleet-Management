@@ -61,20 +61,12 @@ export default function Navbar() {
 
           <div className="flex items-center gap-2">
             {!isAuthed ? (
-              <>
-                <button
-                  onClick={() => navigate("/login")}
-                  className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded text-sm soft-transition-long"
-                >
-                  Login
-                </button>
-                <button
-                  onClick={() => navigate("/register-type")}
-                  className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded text-sm soft-transition-long"
-                >
-                  Register
-                </button>
-              </>
+              <button
+                onClick={() => navigate("/login")}
+                className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded text-sm soft-transition-long"
+              >
+                Login
+              </button>
             ) : (
               <button
                 onClick={() => {

@@ -2,13 +2,7 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import Footer from "./components/Footer";
 
 import Login from "./pages/auth/Login";
-import RegisterType from "./pages/auth/RegisterType";
-import RegisterIIT from "./pages/auth/RegisterIIT";
-import RegisterExternal from "./pages/auth/RegisterExternal";
-import VerifyOTP from "./pages/auth/VerifyOTP";
 import ForgotPassword from "./pages/auth/ForgotPassword";
-import RegisterApprover from "./pages/auth/RegisterApprover";
-import RegisterGuideHod from "./pages/auth/RegisterGuideHod";
 
 import Home from "./pages/user/Home";
 import VehicleSelection from "./pages/user/VehicleSelection";
@@ -37,12 +31,6 @@ function App() {
           {/* Auth Routes */}
           <Route path="/" element={<Login />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/register-type" element={<RegisterType />} />
-          <Route path="/register-iit" element={<RegisterIIT />} />
-          <Route path="/register-external" element={<RegisterExternal />} />
-          <Route path="/register-approver" element={<RegisterApprover />} />
-          <Route path="/register-guide-hod" element={<RegisterGuideHod />} />
-          <Route path="/verify-otp" element={<VerifyOTP />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
 
           {/* Protected Routes */}

@@ -34,6 +34,23 @@ exports.createBookingSchema = Joi.object({
     .max(200)
     .required(),
 
+  purpose: Joi.string()
+    .min(3)
+    .max(500)
+    .required(),
+
+  campus_type: Joi.string()
+    .valid("inside", "outside")
+    .required(),
+
+  return_required: Joi.boolean()
+    .required(),
+
+  return_pickup_time: Joi.date()
+    .iso()
+    .optional()
+    .allow(null, ""),
+
   passenger_count: Joi.number()
     .integer()
     .min(1)

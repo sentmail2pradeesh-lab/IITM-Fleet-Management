@@ -100,7 +100,7 @@ function Login() {
           >
             <h2 className="text-2xl font-bold text-slate-900 mb-2">Login</h2>
             <p className="text-slate-600 text-sm mb-6">
-              IIT users can login with <b>{defaultEmailHint}</b>. External users login with their verified email.
+              Login with your institution account credentials (example: <b>{defaultEmailHint}</b>).
             </p>
 
             <input
@@ -141,21 +141,13 @@ function Login() {
               </div>
             )}
 
-            <div className="mt-4 flex items-center justify-between text-sm">
+            <div className="mt-4 flex items-center justify-start text-sm">
               <button
                 type="button"
                 className="text-slate-700 underline"
                 onClick={() => navigate("/forgot-password")}
               >
                 Forgot password?
-              </button>
-
-              <button
-                type="button"
-                className="text-slate-700 underline"
-                onClick={() => navigate("/register-type")}
-              >
-                New user? Register
               </button>
             </div>
           </form>

@@ -1,7 +1,43 @@
 import { Link } from "react-router-dom";
+import { useContext } from "react";
+import { AuthContext } from "../context/AuthContext";
 
 export default function Footer() {
   const year = new Date().getFullYear();
+  const { user } = useContext(AuthContext);
+  const role = user?.role || "guest";
+
+  const quickLinksByRole = {
+    requester: [
+      { to: "/home", label: "Home" },
+      { to: "/dashboard", label: "My Requests" }
+    ],
+    guide_hod: [
+      { to: "/guide/pending", label: "Pending Requests" }
+    ],
+    approver: [
+      { to: "/approver/pending", label: "Pending Requests" },
+      { to: "/approver/bookings", label: "All Bookings" },
+      { to: "/approver/vehicles", label: "Vehicles" },
+      { to: "/approver/reports", label: "Usage Reports" }
+    ],
+    supervisor: [
+      { to: "/approver/pending", label: "Pending Requests" },
+      { to: "/approver/bookings", label: "All Bookings" },
+      { to: "/approver/vehicles", label: "Vehicles" },
+      { to: "/approver/reports", label: "Usage Reports" }
+    ],
+    admin: [
+      { to: "/admin/dashboard", label: "Admin Dashboard" }
+    ],
+    driver: [
+      { to: "/driver/dashboard", label: "Driver Dashboard" }
+    ],
+    guest: [
+      { to: "/login", label: "Login" }
+    ]
+  };
+  const quickLinks = quickLinksByRole[role] || quickLinksByRole.guest;
 
   return (
     <footer className="mt-auto bg-[#1a2a4a] text-white/80">
@@ -43,10 +79,11 @@ export default function Footer() {
           <div className="p-6">
             <div className="text-sm font-semibold text-white mb-4">Quick Links</div>
             <div className="flex flex-col gap-3 text-sm text-white/70">
-              <FooterLink to="/home">Home</FooterLink>
-              <FooterLink to="/dashboard">My Requests</FooterLink>
-              <FooterLink to="/guide/pending">Guide / HoD</FooterLink>
-              <FooterLink to="/approver/pending">Transport Supervisor</FooterLink>
+              {quickLinks.map((item) => (
+                <FooterLink key={`${item.to}-${item.label}`} to={item.to}>
+                  {item.label}
+                </FooterLink>
+              ))}
             </div>
           </div>
 
@@ -80,10 +117,9 @@ export default function Footer() {
 
           {/* Admin & Reporting */}
           <div className="p-6">
-            <div className="text-sm font-semibold text-white mb-4">Admin & Reporting</div>
+            <div className="text-sm font-semibold text-white mb-4">Role</div>
             <div className="flex flex-col gap-3 text-sm text-white/70">
-              <FooterLink to="/approver/vehicles">Vehicles (Add/Manage)</FooterLink>
-              <FooterLink to="/approver/reports">Usage Reports</FooterLink>
+              <span>{role === "guest" ? "Not logged in" : role.replace("_", " ")}</span>
             </div>
           </div>
         </div>

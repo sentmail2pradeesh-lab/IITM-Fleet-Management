@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom"
 
-function VehicleCard({vehicle, selectedDate, availableCount, groupedByType}){
+function VehicleCard({vehicle, selectedDate, availableCount, groupedByType, onSelect}){
 
 const navigate = useNavigate()
 
@@ -35,7 +35,13 @@ transition
 )}
 
 <button
-onClick={()=>navigate(`/vehicle/${vehicle.id}`, { state: { selectedDate } })}
+onClick={() => {
+  if (onSelect) {
+    onSelect(vehicle)
+    return
+  }
+  navigate(`/vehicle/${vehicle.id}`, { state: { selectedDate } })
+}}
 className="
 mt-4
 bg-blue-400
@@ -46,7 +52,7 @@ rounded
 "
 >
 
-View Details
+{onSelect ? "Select" : "View Details"}
 
 </button>
 

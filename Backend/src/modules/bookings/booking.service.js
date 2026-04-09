@@ -24,7 +24,7 @@ const createBooking = async (data, userId, filePath) => {
 
   // Ensure vehicle exists and capacity is sufficient
   const vehicleResult = await pool.query(
-    `SELECT passenger_capacity FROM vehicles WHERE id = $1`,
+    `SELECT passenger_capacity, vehicle_type FROM vehicles WHERE id = $1`,
     [vehicle_id]
   );
 
@@ -33,10 +33,14 @@ const createBooking = async (data, userId, filePath) => {
   }
 
   const capacity = vehicleResult.rows[0].passenger_capacity;
+  const vehicleType = String(vehicleResult.rows[0].vehicle_type || "");
   if (passenger_count > capacity) {
     throw new Error(
       `Passenger count (${passenger_count}) exceeds vehicle capacity (${capacity})`
     );
+  }
+  if (vehicleType.toLowerCase().includes("cart") && campus_type === "outside") {
+    throw new Error("Cart booking is only allowed for Inside IITM trips");
   }
 
   const isAvailable = await availabilityService.isVehicleAvailable(

@@ -118,13 +118,13 @@ const viewPending = async (req, res, next) => {
 
 const viewGuidePending = async (req, res, next) => {
   try {
-    // Stage 1 -> Stage 2: only show requests waiting for Guide/HoD approval
+    // Show guide approvals + cancellation requests in one pending queue
     const result = await pool.query(
       `SELECT b.*, u.name, u.email, v.vehicle_type, v.passenger_capacity
        FROM bookings b
        JOIN users u ON b.user_id = u.id
        LEFT JOIN vehicles v ON b.vehicle_id = v.id
-       WHERE b.status = 'Pending Guide Approval'
+       WHERE b.status IN ('Pending Guide Approval', 'Cancellation Requested')
        ORDER BY b.created_at DESC`
     );
     res.json(result.rows);

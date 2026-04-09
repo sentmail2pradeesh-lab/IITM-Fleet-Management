@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import Navbar from "../../components/Navbar";
 import { createBooking } from "../../api/bookingApi";
 import { listVehicles } from "../../api/vehicleApi";
@@ -11,8 +11,6 @@ function BookingPage(){
 
 const {id} = useParams();
 const navigate = useNavigate();
-const location = useLocation();
-const selectedDate = location.state?.selectedDate || "";
 const { register, handleSubmit, watch } = useForm({
   defaultValues: {
     return_required: "",
@@ -55,6 +53,14 @@ const onSubmit = async(data)=>{
       setSubmitting(false);
       return;
     }
+    if (
+      String(vehicleType || "").toLowerCase().includes("cart") &&
+      data.campus_type === "outside"
+    ) {
+      setError("Cart booking is only allowed for Inside IITM trips.");
+      setSubmitting(false);
+      return;
+    }
 
     if (vehicleCapacity && Number(data.passenger_count) > vehicleCapacity) {
       setError(`Passenger count cannot exceed vehicle capacity (${vehicleCapacity}).`);
@@ -63,17 +69,8 @@ const onSubmit = async(data)=>{
     }
     const form = new FormData();
     form.append("vehicle_id", String(id));
-    const combine = (d, t) => new Date(`${d}T${t}:00`);
-    const combineLocalString = (d, t) => `${d}T${t}:00`;
-    let start = null;
-    let end = null;
-    if (selectedDate) {
-      start = combine(selectedDate, data.start_time);
-      end = combine(selectedDate, data.end_time);
-    } else {
-      start = new Date(data.start_time);
-      end = new Date(data.end_time);
-    }
+    const start = new Date(data.start_time);
+    const end = new Date(data.end_time);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       setError("Invalid start/end time");
       setSubmitting(false);
@@ -84,20 +81,13 @@ const onSubmit = async(data)=>{
       setSubmitting(false);
       return;
     }
-    // prevent past time for selected date
-    if (selectedDate && start < new Date()) {
+    if (start < new Date()) {
       setError("Start time cannot be in the past.");
       setSubmitting(false);
       return;
     }
-    if (selectedDate) {
-      // Keep local clock time exactly as user entered (no UTC conversion)
-      form.append("start_time", combineLocalString(selectedDate, data.start_time));
-      form.append("end_time", combineLocalString(selectedDate, data.end_time));
-    } else {
-      form.append("start_time", start.toISOString());
-      form.append("end_time", end.toISOString());
-    }
+    form.append("start_time", start.toISOString());
+    form.append("end_time", end.toISOString());
     form.append("pickup_location", data.pickup_location);
     form.append("drop_location", data.drop_location);
     form.append("passenger_count", String(data.passenger_count));
@@ -106,9 +96,7 @@ const onSubmit = async(data)=>{
     form.append("campus_type", data.campus_type);
     form.append("return_required", String(returnRequired === "yes"));
     if(returnRequired === "yes" && data.return_pickup_time){
-      const ret = selectedDate
-        ? combine(selectedDate, data.return_pickup_time)
-        : new Date(data.return_pickup_time);
+      const ret = new Date(data.return_pickup_time);
       if (Number.isNaN(ret.getTime())) {
         setError("Invalid return pickup time");
         setSubmitting(false);
@@ -119,11 +107,7 @@ const onSubmit = async(data)=>{
         setSubmitting(false);
         return;
       }
-      if (selectedDate) {
-        form.append("return_pickup_time", combineLocalString(selectedDate, data.return_pickup_time));
-      } else {
-        form.append("return_pickup_time", ret.toISOString());
-      }
+      form.append("return_pickup_time", ret.toISOString());
     }
     if(data.document?.[0]) form.append("document", data.document[0]);
 
@@ -156,19 +140,13 @@ return (
         <p className="text-slate-600 text-sm text-center mb-6">
           Fill the trip details and submit for approval.
         </p>
-        {selectedDate && (
-          <p className="text-slate-600 text-sm text-center mb-4">
-            Booking date: <b>{selectedDate}</b> (enter time only)
-          </p>
-        )}
-
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
           <div>
-            <label className="block text-sm font-semibold text-white mb-1">
-              Start time *
+            <label className="block text-sm font-semibold text-slate-700 mb-1">
+              Start date & time *
             </label>
             <input
-              type={selectedDate ? "time" : "datetime-local"}
+              type="datetime-local"
               {...register("start_time", { required: true })}
               className="block w-full px-4 py-2 rounded border border-slate-200 text-black"
             />
@@ -176,10 +154,10 @@ return (
 
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1">
-              End time *
+              End date & time *
             </label>
             <input
-              type={selectedDate ? "time" : "datetime-local"}
+              type="datetime-local"
               {...register("end_time", { required: true })}
               className="block w-full px-4 py-2 rounded border border-slate-200 text-black"
             />
@@ -275,7 +253,7 @@ return (
                 Return pickup time *
               </label>
               <input
-                type={selectedDate ? "time" : "datetime-local"}
+                type="datetime-local"
                 {...register("return_pickup_time", { required: true })}
                 className="block w-full px-4 py-2 rounded border border-slate-200 text-black"
               />
