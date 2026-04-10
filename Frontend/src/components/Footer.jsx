@@ -24,7 +24,6 @@ export default function Footer() {
     supervisor: [
       { to: "/approver/pending", label: "Pending Requests" },
       { to: "/approver/bookings", label: "All Bookings" },
-      { to: "/approver/vehicles", label: "Vehicles" },
       { to: "/approver/reports", label: "Usage Reports" }
     ],
     oic: [

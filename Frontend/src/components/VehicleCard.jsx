@@ -1,5 +1,12 @@
 import { useNavigate } from "react-router-dom"
 
+function normalizeVehicleType(type) {
+  const raw = String(type || "").toUpperCase();
+  if (raw === "CART-LARGE" || raw === "E-CART-NON-AC") return "CART-NON-AC";
+  if (raw === "E-CART-AC") return "CART-AC";
+  return raw || "UNKNOWN";
+}
+
 function VehicleCard({vehicle, selectedDate, onSelect}){
 
 const navigate = useNavigate()
@@ -21,11 +28,11 @@ transition
 ">
 
 <h3 className="text-xl font-semibold">
-{vehicle.vehicle_type}
+{normalizeVehicleType(vehicle.vehicle_type)}
 </h3>
 
 <p className="text-sm mt-2">
-{vehicle.passenger_capacity} members capacity
+{vehicle.passenger_capacity} seating capacity
 </p>
 
 <button

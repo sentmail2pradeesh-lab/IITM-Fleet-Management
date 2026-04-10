@@ -4,6 +4,13 @@ import Navbar from "../../components/Navbar";
 import VehicleCard from "../../components/VehicleCard";
 import { listVehicles } from "../../api/vehicleApi";
 
+function normalizeVehicleType(type) {
+  const raw = String(type || "").toUpperCase();
+  if (raw === "CART-LARGE" || raw === "E-CART-NON-AC") return "CART-NON-AC";
+  if (raw === "E-CART-AC") return "CART-AC";
+  return raw || "UNKNOWN";
+}
+
 function Home(){
 
 const [error,setError] = useState("");
@@ -15,7 +22,7 @@ const navigate = useNavigate();
 const groupedVehicles = useMemo(() => {
   const byType = {};
   for (const v of vehicles) {
-    const key = v.vehicle_type || "Unknown";
+    const key = normalizeVehicleType(v.vehicle_type);
     if (!byType[key]) byType[key] = [];
     byType[key].push(v);
   }
@@ -108,10 +115,10 @@ return(
         <div className="mt-8 bg-white rounded-2xl p-6 shadow-[0_4px_16px_rgba(16,24,40,0.08)]">
           <h3 className="text-xl font-semibold text-slate-900 mb-3">Selected Vehicle Details</h3>
           <p className="text-slate-700 mb-1">
-            <b>Type:</b> {selectedVehicle.vehicle_type}
+            <b>Type:</b> {normalizeVehicleType(selectedVehicle.vehicle_type)}
           </p>
           <p className="text-slate-700 mb-4">
-            <b>Capacity:</b> {selectedVehicle.passenger_capacity} members
+            <b>Seating capacity:</b> {selectedVehicle.passenger_capacity}
           </p>
           <button
             onClick={() => navigate(`/vehicle/${selectedVehicle.id}`)}

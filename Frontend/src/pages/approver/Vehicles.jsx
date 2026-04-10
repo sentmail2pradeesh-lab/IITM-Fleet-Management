@@ -10,11 +10,18 @@ import {
 import { AuthContext } from "../../context/AuthContext";
 
 const VEHICLE_TYPES = [
-  { value: "E-CART-AC",     label: "E-cart AC",    category: "CART" },
-  { value: "E-CART-NON-AC", label: "E-cart Non-AC", category: "CART" },
+  { value: "CART-AC",       label: "Cart AC",       category: "CART" },
+  { value: "CART-NON-AC",   label: "Cart Non-AC",   category: "CART" },
   { value: "BUS-ELECTRIC",  label: "Bus Electric",  category: "BUS"  },
   { value: "BUS-DIESEL",    label: "Bus Diesel",    category: "BUS"  },
 ];
+
+function normalizeVehicleType(type) {
+  const raw = String(type || "").toUpperCase();
+  if (raw === "CART-LARGE" || raw === "E-CART-NON-AC") return "CART-NON-AC";
+  if (raw === "E-CART-AC") return "CART-AC";
+  return raw;
+}
 
 function apiImg(path) {
   if (!path) return null;
@@ -61,7 +68,7 @@ export default function Vehicles() {
   const [editSubmitting, setEditSubmitting] = useState(false);
 
   const filteredRows = filterType
-    ? rows.filter((v) => v.vehicle_type === filterType)
+    ? rows.filter((v) => normalizeVehicleType(v.vehicle_type) === filterType)
     : [];
 
   const refresh = async () => {
@@ -227,9 +234,9 @@ export default function Vehicles() {
     }
   };
 
-  const uniqueTypes = [...new Set(rows.map((v) => v.vehicle_type))].filter(Boolean).sort();
+  const uniqueTypes = [...new Set(rows.map((v) => normalizeVehicleType(v.vehicle_type)))].filter(Boolean).sort();
   const typeStats = uniqueTypes.map((type) => {
-    const list = rows.filter((v) => v.vehicle_type === type);
+    const list = rows.filter((v) => normalizeVehicleType(v.vehicle_type) === type);
     const total = list.length;
     const free = list.filter((v) => v.status === "Available").length;
     const booked = list.filter((v) => v.status === "Booked").length;
@@ -286,7 +293,7 @@ export default function Vehicles() {
           </div>
 
           <div>
-            <label className="block text-sm text-white/90 mb-1">Capacity</label>
+            <label className="block text-sm text-white/90 mb-1">Seating capacity</label>
             <input
               type="number"
               min={1}
@@ -451,7 +458,7 @@ export default function Vehicles() {
             <tr>
               <th className="p-3">ID</th>
               <th className="p-3">Type</th>
-              <th className="p-3">Capacity</th>
+              <th className="p-3">Seating capacity</th>
               <th className="p-3">Reg No</th>
               <th className="p-3">Status</th>
               <th className="p-3">Condition</th>
@@ -466,10 +473,10 @@ export default function Vehicles() {
                 <td className="p-3">
                   <button
                     type="button"
-                    onClick={() => setFilterType(v.vehicle_type)}
+                    onClick={() => setFilterType(normalizeVehicleType(v.vehicle_type))}
                     className="text-blue-300 hover:underline font-medium"
                   >
-                    {v.vehicle_type}
+                    {normalizeVehicleType(v.vehicle_type)}
                   </button>
                 </td>
                 <td className="p-3">{v.passenger_capacity}</td>
@@ -594,7 +601,7 @@ export default function Vehicles() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Capacity</label>
+                <label className="block text-sm font-medium mb-1">Seating capacity</label>
                 <input
                   type="number"
                   min={1}

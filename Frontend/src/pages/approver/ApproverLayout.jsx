@@ -47,7 +47,7 @@ export default function ApproverLayout() {
             <div className="text-xs uppercase text-white/60 px-1 mt-4 mb-1">
               Fleet
             </div>
-            <NavLink to="/approver/vehicles">Vehicles</NavLink>
+            {isOic && <NavLink to="/approver/vehicles">Vehicles</NavLink>}
             <NavLink to="/approver/bookings">All bookings</NavLink>
             {isOic && <NavLink to="/approver/users">Users (drivers/supervisors)</NavLink>}
 
