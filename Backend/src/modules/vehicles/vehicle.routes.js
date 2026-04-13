@@ -14,7 +14,10 @@ const {
   removeVehicle,
   getVehicleSchedule,
   getAvailableVehicles,
-  getVehicleTypeDetails
+  getVehicleTypeDetails,
+  getVehicleAvailabilitySummary,
+  getVehicleAvailabilityByType,
+  getVehicleBookedDates
 } = require('./vehicle.controller');
 
 /**
@@ -65,6 +68,24 @@ router.get(
   '/available',
   verifyToken,
   getAvailableVehicles
+);
+
+router.get(
+  "/availability-summary",
+  verifyToken,
+  getVehicleAvailabilitySummary
+);
+
+router.get(
+  "/availability-by-type",
+  verifyToken,
+  getVehicleAvailabilityByType
+);
+
+router.get(
+  "/:id/booked-dates",
+  verifyToken,
+  getVehicleBookedDates
 );
 
 /**

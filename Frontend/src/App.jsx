@@ -61,8 +61,10 @@ function App() {
                 <Route path="/approver/pending" element={<PendingRequests />} />
                 <Route path="/approver/bookings" element={<AllBookings />} />
                 <Route path="/approver/reports" element={<Reports />} />
-                <Route element={<RequireRole role={["oic", "approver"]} />}>
+                <Route element={<RequireRole role={["oic", "approver", "supervisor"]} />}>
                   <Route path="/approver/vehicles" element={<Vehicles />} />
+                </Route>
+                <Route element={<RequireRole role={["oic", "approver"]} />}>
                   <Route path="/approver/users" element={<UserManagement />} />
                 </Route>
               </Route>

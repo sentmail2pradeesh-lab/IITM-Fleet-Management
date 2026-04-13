@@ -1,15 +1,13 @@
 const {
   createBooking,
   getPendingBookings,
-  getUpcomingBookings,
-  approveBooking,
-  rejectBooking
+  getUpcomingBookings
 } = require('./booking.service');
 
 const pool = require('../../config/db');
 const availabilityService = require('../../services/availabilityService');
-const whatsappService = require('../whatsapp/whatsapp.service');
 const emailService = require("../../config/email");
+const smsNotificationService = require("../../services/smsNotificationService");
 const { isValidTransition } = require("../../utils/bookingStateValidator");
 const { logAction } = require("../../utils/auditLogger");
 
@@ -109,8 +107,45 @@ Please review and approve/reject at Guide/HoD level.
 
 const viewPending = async (req, res, next) => {
   try {
-    const bookings = await getPendingBookings();
-    res.json(bookings);
+    const role = req.user?.role === "approver" ? "oic" : req.user?.role;
+
+    // Role-scoped pending queue:
+    // - Guide/HoD has its own endpoint.
+    // - Supervisor: only items that still need supervisor action (Guide Approved, cancellation requests, or incomplete Pending OIC Approval).
+    // - OIC: only Pending OIC Approval.
+    let where = "";
+    if (role === "supervisor") {
+      where = `
+        WHERE (
+          b.status IN ('Guide Approved', 'Cancellation Requested')
+          OR (
+            b.status = 'Pending OIC Approval'
+            AND (
+              b.driver_name IS NULL
+              OR LENGTH(TRIM(COALESCE(b.driver_name, ''))) = 0
+              OR b.driver_phone IS NULL
+              OR LENGTH(TRIM(COALESCE(b.driver_phone, ''))) = 0
+            )
+          )
+        )
+      `;
+    } else if (role === "oic") {
+      where = `WHERE b.status = 'Pending OIC Approval'`;
+    } else {
+      // Default safe behavior: return none for other roles.
+      where = `WHERE 1 = 0`;
+    }
+
+    const result = await pool.query(
+      `SELECT b.*, u.name, u.email, v.vehicle_type, v.passenger_capacity
+       FROM bookings b
+       JOIN users u ON b.user_id = u.id
+       LEFT JOIN vehicles v ON b.vehicle_id = v.id
+       ${where}
+       ORDER BY b.created_at DESC`
+    );
+
+    res.json(result.rows);
   } catch (err) {
     next(err);
   }
@@ -136,6 +171,7 @@ const viewGuidePending = async (req, res, next) => {
 const guideApprove = async (req, res, next) => {
   try {
     const bookingId = req.params.id;
+    const remarks = String(req.body?.remarks || "").trim();
     const bookingData = await pool.query(
       `SELECT * FROM bookings WHERE id = $1`,
       [bookingId]
@@ -165,7 +201,8 @@ const guideApprove = async (req, res, next) => {
       action: "GUIDE_APPROVED",
       oldStatus: booking.status,
       newStatus: "Guide Approved",
-      ip: req.ip
+      ip: req.ip,
+      remarks
     });
 
     const userResult = await pool.query(
@@ -235,7 +272,8 @@ const guideReject = async (req, res, next) => {
       action: "GUIDE_REJECTED",
       oldStatus: booking.status,
       newStatus: "Rejected",
-      ip: req.ip
+      ip: req.ip,
+      remarks
     });
 
     const userResult = await pool.query(
@@ -273,11 +311,18 @@ const approve = async (req, res, next) => {
 
   try {
     const bookingId = req.params.id;
+    const remarks = String(req.body?.remarks || "").trim();
     const actorRole = req.user?.role === "approver" ? "oic" : req.user?.role;
+
+    if (actorRole !== "oic") {
+      return res.status(403).json({
+        message:
+          "Only Officer In-charge can use this action. Supervisors must allot vehicle and driver via the supervisor allotment flow."
+      });
+    }
 
     await client.query("BEGIN");
 
-    // Lock booking row
     const bookingData = await client.query(
       `SELECT * FROM bookings WHERE id = $1 FOR UPDATE`,
       [bookingId]
@@ -285,23 +330,25 @@ const approve = async (req, res, next) => {
 
     if (bookingData.rowCount === 0) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ message: 'Booking not found' });
+      return res.status(404).json({ message: "Booking not found" });
     }
 
     const booking = bookingData.rows[0];
-    const allowedStatuses =
-      actorRole === "supervisor"
-        ? ["Guide Approved"]
-        : ["Pending OIC Approval", "Guide Approved"];
 
-    if (!allowedStatuses.includes(booking.status)) {
+    if (booking.status !== "Pending OIC Approval") {
       await client.query("ROLLBACK");
       return res.status(400).json({
-        message: `Cannot approve booking in ${booking.status} state for role ${actorRole}`
+        message: `OIC can only approve bookings awaiting OIC sign-off (Pending OIC Approval). Current status: ${booking.status}`
       });
     }
 
-    // Double-check availability (buffer safety)
+    if (!String(booking.driver_name || "").trim() || !String(booking.driver_phone || "").trim()) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        message: "Supervisor must allot vehicle and driver before OIC can approve."
+      });
+    }
+
     const available = await availabilityService.isVehicleAvailable(
       booking.vehicle_id,
       booking.start_time,
@@ -311,29 +358,21 @@ const approve = async (req, res, next) => {
     if (!available) {
       await client.query("ROLLBACK");
       return res.status(409).json({
-        message: 'Vehicle not available due to buffer conflict'
+        message: "Vehicle not available due to buffer conflict"
       });
     }
 
-    const nextStatus = actorRole === "supervisor" ? "Pending OIC Approval" : "Approved";
-
-    // Update booking status
     const result = await client.query(
       `UPDATE bookings
-       SET status = $2
+       SET status = 'Assigned'
        WHERE id = $1
        RETURNING *`,
-      [bookingId, nextStatus]
+      [bookingId]
     );
 
-    if (nextStatus === "Approved") {
-      await client.query(
-        `UPDATE vehicles
-         SET status = 'Booked'
-         WHERE id = $1`,
-        [booking.vehicle_id]
-      );
-    }
+    await client.query(`UPDATE vehicles SET status = 'Booked' WHERE id = $1`, [
+      booking.vehicle_id
+    ]);
 
     await client.query("COMMIT");
 
@@ -342,59 +381,212 @@ const approve = async (req, res, next) => {
     await logAction({
       bookingId: updatedBooking.id,
       performedBy: req.user.id,
-      action: nextStatus === "Approved" ? "BOOKING_APPROVED" : "SENT_TO_OIC",
+      action: "OIC_APPROVED_ASSIGNED",
       oldStatus: booking.status,
-      newStatus: nextStatus,
-      ip: req.ip
+      newStatus: "Assigned",
+      ip: req.ip,
+      remarks
     });
 
-    // Fetch user details
     const userResult = await pool.query(
-      `SELECT name, email FROM users WHERE id = $1`,
+      `SELECT name, email, phone FROM users WHERE id = $1`,
       [updatedBooking.user_id]
     );
-
     const user = userResult.rows[0];
+    const driverName = updatedBooking.driver_name;
+    const driverPhone = updatedBooking.driver_phone;
 
-    // Send approval email
     try {
       await emailService.sendEmail({
-  to: user.email,
-        subject:
-          nextStatus === "Approved"
-            ? "Booking approved by Officer In-charge"
-            : "Booking sent to Officer In-charge for approval",
-  text: `
+        to: user.email,
+        subject: "Booking confirmed by Officer In-charge",
+        text: `
 Dear ${user.name},
 
-Your booking has been ${
-  nextStatus === "Approved"
-    ? "approved by Officer In-charge."
-    : "processed by Supervisor and sent to Officer In-charge for final approval."
-}
+Your booking has been approved by the Officer In-charge. Driver and vehicle are confirmed.
+
+Driver: ${driverName}
+Phone: ${driverPhone}
 
 Vehicle ID: ${updatedBooking.vehicle_id}
-Start Time: ${updatedBooking.start_time}
-End Time: ${updatedBooking.end_time}
-
-You will receive driver details once assigned.
+Pickup: ${updatedBooking.pickup_location}
+Drop: ${updatedBooking.drop_location}
+Start: ${updatedBooking.start_time}
+End: ${updatedBooking.end_time}
 
 Regards,
 IITM Transport System
-`
-});
-
+        `
+      });
     } catch (emailError) {
-      console.error("Approval email failed:", emailError.message);
+      console.error("OIC approval email failed:", emailError.message);
+    }
+
+    try {
+      await smsNotificationService.sendDriverBookingConfirmedSMS({
+        booking: updatedBooking,
+        requester: user,
+        driver: { name: driverName, phone: driverPhone }
+      });
+    } catch (smsError) {
+      console.error("Driver SMS (booking confirmed) failed:", smsError.message);
     }
 
     res.json(updatedBooking);
-
   } catch (err) {
     await client.query("ROLLBACK");
     next(err);
   } finally {
     client.release();
+  }
+};
+
+const supervisorAllot = async (req, res, next) => {
+  try {
+    const bookingId = req.params.id;
+    const { vehicle_id: bodyVehicleId, driver_name, driver_phone, remarks } = req.body;
+
+    const bookingData = await pool.query(`SELECT * FROM bookings WHERE id = $1`, [
+      bookingId
+    ]);
+    if (bookingData.rowCount === 0) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+    const booking = bookingData.rows[0];
+
+    const canAllotFromGuide = booking.status === "Guide Approved";
+    const canFillPendingOic =
+      booking.status === "Pending OIC Approval" &&
+      (!String(booking.driver_name || "").trim() ||
+        !String(booking.driver_phone || "").trim());
+
+    if (!canAllotFromGuide && !canFillPendingOic) {
+      return res.status(400).json({
+        message: `Supervisor cannot allot in ${booking.status}. Use pending Guide Approved requests, or complete missing driver details on Pending OIC Approval rows.`
+      });
+    }
+
+    if (canAllotFromGuide && !isValidTransition(booking.status, "Pending OIC Approval")) {
+      return res.status(400).json({ message: "Invalid state transition" });
+    }
+
+    const nextVehicleId =
+      bodyVehicleId != null && bodyVehicleId !== ""
+        ? Number(bodyVehicleId)
+        : booking.vehicle_id;
+
+    if (!Number.isFinite(nextVehicleId)) {
+      return res.status(400).json({ message: "Invalid vehicle" });
+    }
+
+    const vehicleResult = await pool.query(
+      `SELECT passenger_capacity, vehicle_type FROM vehicles WHERE id = $1`,
+      [nextVehicleId]
+    );
+    if (vehicleResult.rowCount === 0) {
+      return res.status(400).json({ message: "Selected vehicle does not exist" });
+    }
+
+    const capacity = vehicleResult.rows[0].passenger_capacity;
+    const vehicleType = String(vehicleResult.rows[0].vehicle_type || "");
+    if (booking.passenger_count > capacity) {
+      return res.status(400).json({
+        message: `Passenger count (${booking.passenger_count}) exceeds vehicle capacity (${capacity})`
+      });
+    }
+    if (vehicleType.toLowerCase().includes("cart") && booking.campus_type === "outside") {
+      return res.status(400).json({ message: "Cart booking is only allowed for Inside IITM trips" });
+    }
+
+    const available = await availabilityService.isVehicleAvailable(
+      nextVehicleId,
+      booking.start_time,
+      booking.end_time
+    );
+    if (!available) {
+      return res.status(409).json({
+        message: "Vehicle not available for the selected time window"
+      });
+    }
+
+    const nextStatus = canAllotFromGuide ? "Pending OIC Approval" : booking.status;
+
+    const result = await pool.query(
+      `UPDATE bookings
+       SET vehicle_id = $1,
+           driver_name = $2,
+           driver_phone = $3,
+           status = $4
+       WHERE id = $5
+         AND (
+           status = 'Guide Approved'
+           OR (
+             status = 'Pending OIC Approval'
+             AND (
+               driver_name IS NULL
+               OR LENGTH(TRIM(COALESCE(driver_name, ''))) = 0
+               OR driver_phone IS NULL
+               OR LENGTH(TRIM(COALESCE(driver_phone, ''))) = 0
+             )
+           )
+         )
+       RETURNING *`,
+      [
+        nextVehicleId,
+        String(driver_name).trim(),
+        String(driver_phone).trim(),
+        nextStatus,
+        bookingId
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(400).json({ message: "Could not update booking (state changed?)" });
+    }
+
+    const updatedBooking = result.rows[0];
+
+    await logAction({
+      bookingId: updatedBooking.id,
+      performedBy: req.user.id,
+      action: canAllotFromGuide ? "SUPERVISOR_ALLOTMENT" : "SUPERVISOR_ALLOTMENT_UPDATE",
+      oldStatus: booking.status,
+      newStatus: updatedBooking.status,
+      ip: req.ip,
+      remarks
+    });
+
+    const userResult = await pool.query(`SELECT name, email FROM users WHERE id = $1`, [
+      updatedBooking.user_id
+    ]);
+    const user = userResult.rows[0];
+    const oicEmail = process.env.OIC_EMAIL || process.env.APPROVER_EMAIL;
+
+    try {
+      if (oicEmail) {
+        await emailService.sendEmail({
+          to: oicEmail,
+          subject: "Fleet booking – OIC approval required (vehicle & driver allotted)",
+          text: `Supervisor has allotted vehicle and driver. OIC approval is required.
+
+Booking ID: ${updatedBooking.id}
+Requester: ${user.name} (${user.email})
+Vehicle ID: ${updatedBooking.vehicle_id}
+Driver: ${updatedBooking.driver_name} (${updatedBooking.driver_phone})
+Start: ${updatedBooking.start_time}
+End: ${updatedBooking.end_time}
+
+Please review and approve in the OIC dashboard.
+`
+        });
+      }
+    } catch (emailError) {
+      console.error("OIC notify email failed:", emailError.message);
+    }
+
+    res.json(updatedBooking);
+  } catch (err) {
+    next(err);
   }
 };
 
@@ -413,10 +605,17 @@ const reject = async (req, res, next) => {
 
     const booking = bookingData.rows[0];
     let newStatus = 'Rejected';
-    if (!["Guide Approved", "Approved", "Cancellation Requested"].includes(booking.status)) {
+    if (
+      ![
+        "Guide Approved",
+        "Approved",
+        "Pending OIC Approval",
+        "Cancellation Requested"
+      ].includes(booking.status)
+    ) {
       return res.status(400).json({
         message: `Cannot reject booking in ${booking.status} state`
-    } );
+      });
     }
 
 
@@ -488,8 +687,13 @@ IITM Transport System
 
 const assignDriver = async (req, res, next) => {
   try {
+    const actorRole = req.user?.role === "approver" ? "oic" : req.user?.role;
+    if (actorRole !== "supervisor") {
+      return res.status(403).json({ message: "Only Transport Supervisor can assign drivers" });
+    }
+
     const bookingId = req.params.id;
-    const { driver_name, driver_phone } = req.body;
+    const { driver_name, driver_phone, remarks } = req.body;
 
     // Fetch booking first
     const bookingData = await pool.query(
@@ -606,25 +810,6 @@ IITM Fleet`;
     } catch (emailError) {
       console.error("Email failed:", emailError.message);
     }
-
-    // 📱 WhatsApp to Driver
-    try {
-      await whatsappService.sendWhatsAppMessage(
-        driver_phone,
-        `🚗 Trip Assigned
-
-Pickup: ${booking.pickup_location}
-Drop: ${booking.drop_location}
-Start Time: ${booking.start_time}
-
-Reply:
-START
-ISSUE <message>
-END`
-      );
-    } catch (whatsappError) {
-      console.error("WhatsApp sending failed:", whatsappError.message);
-    }
     const updatedBooking = result.rows[0];
 
     await logAction({
@@ -633,7 +818,8 @@ END`
       action: "DRIVER_ASSIGNED",
       oldStatus: booking.status,
       newStatus: "Assigned",
-      ip: req.ip
+      ip: req.ip,
+      remarks
     });
 
 
@@ -713,6 +899,10 @@ const requestCancellation = async (req, res, next) => {
 };
 
 const reassignVehicle = async (req, res) => {
+  const actorRole = req.user?.role === "approver" ? "oic" : req.user?.role;
+  if (actorRole !== "supervisor") {
+    return res.status(403).json({ message: "Only Transport Supervisor can reassign vehicles" });
+  }
 
   const bookingId = req.params.id;
   const { vehicle_id } = req.body;
@@ -872,8 +1062,61 @@ const getBookingById = async (req, res, next) => {
   }
 };
 
+const getBookingFlow = async (req, res, next) => {
+  try {
+    const bookingId = req.params.id;
+
+    const bookingRes = await pool.query(
+      `SELECT b.*, u.name AS requester_name, u.email AS requester_email, u.phone AS requester_phone,
+              v.vehicle_type, v.passenger_capacity
+       FROM bookings b
+       JOIN users u ON b.user_id = u.id
+       LEFT JOIN vehicles v ON b.vehicle_id = v.id
+       WHERE b.id = $1
+       LIMIT 1`,
+      [bookingId]
+    );
+
+    if (bookingRes.rowCount === 0) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    const booking = bookingRes.rows[0];
+    if (req.user.role === "requester" && booking.user_id !== req.user.id) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const auditRes = await pool.query(
+      `SELECT a.id, a.action, a.old_status, a.new_status, a.remarks, a.ip_address, a.performed_by,
+              a.created_at, u.name AS performed_by_name, u.email AS performed_by_email
+       FROM audit_logs a
+       LEFT JOIN users u ON a.performed_by = u.id
+       WHERE a.booking_id = $1
+       ORDER BY a.id ASC`,
+      [bookingId]
+    );
+
+    res.json({
+      booking,
+      requester: {
+        name: booking.requester_name,
+        email: booking.requester_email,
+        phone: booking.requester_phone
+      },
+      audit: auditRes.rows
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const reportIssue = async (req, res, next) => {
   try {
+    const actorRole = req.user?.role === "approver" ? "oic" : req.user?.role;
+    if (actorRole !== "supervisor") {
+      return res.status(403).json({ message: "Only Transport Supervisor can report vehicle issues from this panel" });
+    }
+
     const bookingId = req.params.id;
     const { reason, mark_unavailable } = req.body || {};
     if (!reason || !String(reason).trim()) {
@@ -946,6 +1189,7 @@ module.exports = {
   guideReject,
   viewUpcoming,
   approve,
+  supervisorAllot,
   reject,
   requestCancellation,
   assignDriver,
@@ -953,6 +1197,7 @@ module.exports = {
   reportIssue,
   listMyBookings,
   listAllBookings,
-  getBookingById
+  getBookingById,
+  getBookingFlow
 };
 

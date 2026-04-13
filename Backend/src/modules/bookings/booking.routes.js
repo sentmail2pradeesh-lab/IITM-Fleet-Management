@@ -17,6 +17,7 @@ const {
   guideApprove,
   guideReject,
   approve,
+  supervisorAllot,
   reject,
   requestCancellation,
   assignDriver,
@@ -24,12 +25,14 @@ const {
   reportIssue,
   listMyBookings,
   listAllBookings,
-  getBookingById
+  getBookingById,
+  getBookingFlow
 } = require('./booking.controller');
 
 const {
   createBookingSchema,
   assignDriverSchema,
+  supervisorAllotSchema,
   cancellationSchema
 } = require("../../validators/booking.validator");
 
@@ -133,6 +136,13 @@ router.get(
   asyncHandler(getBookingById)
 );
 
+router.get(
+  "/:id/flow",
+  verifyToken,
+  allowRole(["oic", "approver", "supervisor", "guide_hod", "requester"]),
+  asyncHandler(getBookingFlow)
+);
+
 /**
  * @swagger
  * /api/bookings/{id}/approve:
@@ -166,10 +176,18 @@ router.patch(
 );
 
 router.patch(
-  '/:id/approve',
+  "/:id/approve",
   verifyToken,
-  allowRole(['oic', 'approver', 'supervisor']),
+  allowRole(["oic", "approver"]),
   approve
+);
+
+router.put(
+  "/:id/supervisor-allot",
+  verifyToken,
+  allowRole("supervisor"),
+  validate(supervisorAllotSchema),
+  asyncHandler(supervisorAllot)
 );
 
 /**
@@ -191,9 +209,9 @@ router.patch(
  *         description: Booking rejected
  */
 router.patch(
-  '/:id/reject',
+  "/:id/reject",
   verifyToken,
-  allowRole(['oic', 'approver', 'supervisor']),
+  allowRole(["oic", "approver", "supervisor"]),
   reject
 );
 
@@ -242,9 +260,9 @@ router.patch(
  *         description: Driver assigned successfully
  */
 router.put(
-  '/:id/assign',
+  "/:id/assign",
   verifyToken,
-  allowRole(['oic', 'approver', 'supervisor']),
+  allowRole("supervisor"),
   validate(assignDriverSchema),
   assignDriver
 );
@@ -267,14 +285,14 @@ router.put(
 router.patch(
   "/:id/reassign",
   verifyToken,
-  allowRole(["oic", "approver", "supervisor"]),
+  allowRole("supervisor"),
   asyncHandler(reassignVehicle)
 );
 
 router.patch(
   "/:id/report-issue",
   verifyToken,
-  allowRole(["oic", "approver", "supervisor"]),
+  allowRole("supervisor"),
   asyncHandler(reportIssue)
 );
 

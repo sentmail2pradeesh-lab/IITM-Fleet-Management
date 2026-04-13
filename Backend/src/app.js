@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require("express-rate-limit");
 const cron = require("./jobs/delayMonitor");
+require("./jobs/tripReminder");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./config/swagger");
 const app = express();
@@ -71,9 +72,6 @@ app.use('/api/vehicles', vehicleRoutes);
 
 const bookingRoutes = require('./modules/bookings/booking.routes');
 app.use('/api/bookings', bookingRoutes);
-
-const whatsappRoutes = require("./modules/whatsapp/whatsapp.routes");
-app.use("/api/whatsapp", whatsappRoutes);
 
 const reportRoutes = require("./modules/reports/report.routes");
 app.use("/api/reports", reportRoutes);

@@ -11,7 +11,8 @@ const validTransitions = {
 
   // 4-stage workflow (strict)
   "Pending Guide Approval": ["Cancellation Requested"],
-  "Guide Approved": ["Cancellation Requested"]
+  "Guide Approved": ["Cancellation Requested", "Pending OIC Approval"],
+  "Pending OIC Approval": ["Assigned", "Rejected"]
 };
 
 exports.isValidTransition = (currentStatus, newStatus) => {

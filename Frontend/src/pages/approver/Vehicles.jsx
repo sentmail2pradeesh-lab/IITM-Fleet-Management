@@ -3,6 +3,7 @@ import { useContext } from "react";
 import {
   addVehiclesBulk,
   deleteVehicle,
+  getVehicleBookedDates,
   listVehicles,
   setVehicleStatus,
   updateVehicle
@@ -33,11 +34,16 @@ export default function Vehicles() {
   const { user } = useContext(AuthContext);
   const role = user?.role === "approver" ? "oic" : user?.role;
   const canAddVehicles = role === "oic";
+  const canManageFleet = role === "oic";
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [filterType, setFilterType] = useState(null);
+  const [bookedModal, setBookedModal] = useState(null); // vehicle row
+  const [bookedLoading, setBookedLoading] = useState(false);
+  const [bookedError, setBookedError] = useState("");
+  const [bookedRows, setBookedRows] = useState([]);
 
   const [form, setForm] = useState({
     vehicle_type: "",
@@ -191,6 +197,21 @@ export default function Vehicles() {
     }
   };
 
+  const openBookedDates = async (v) => {
+    setBookedModal(v);
+    setBookedRows([]);
+    setBookedError("");
+    setBookedLoading(true);
+    try {
+      const res = await getVehicleBookedDates(v.id);
+      setBookedRows(res.data?.bookings || []);
+    } catch (e) {
+      setBookedError(e?.response?.data?.message || "Failed to load booked dates");
+    } finally {
+      setBookedLoading(false);
+    }
+  };
+
   const openEdit = (v) => {
     setEditVehicle(v);
     setEditForm({
@@ -238,36 +259,36 @@ export default function Vehicles() {
   const typeStats = uniqueTypes.map((type) => {
     const list = rows.filter((v) => normalizeVehicleType(v.vehicle_type) === type);
     const total = list.length;
-    const free = list.filter((v) => v.status === "Available").length;
-    const booked = list.filter((v) => v.status === "Booked").length;
-    return { type, total, free, booked };
+    const working = list.filter((v) => v.status !== "Unavailable").length;
+    const unavailable = list.filter((v) => v.status === "Unavailable").length;
+    return { type, total, working, unavailable };
   });
 
   return (
-    <div className="text-white">
+    <div className="text-slate-800">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Vehicle Management</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">Vehicle Management</h1>
         <button
           onClick={refresh}
-          className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded"
+          className="bg-[#1a2a4a] hover:bg-[#21385f] text-white px-4 py-2 rounded soft-transition-long"
         >
           Refresh
         </button>
       </div>
 
-      {error && <p className="text-red-200 mb-4">{error}</p>}
+      {error && <p className="text-red-600 mb-4">{error}</p>}
 
-      <div className="bg-white/10 rounded-xl p-4 mb-6">
-        <h2 className="font-semibold mb-3">Add vehicles</h2>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-[0_8px_24px_rgba(16,24,40,0.08)] p-4 mb-6">
+        <h2 className="font-semibold mb-3 text-slate-900">Add vehicles</h2>
         {!canAddVehicles && (
-          <p className="text-sm text-white/80 mb-3">
-            Only Officer In-charge can add new vehicles.
+          <p className="text-sm text-slate-600 mb-3">
+            Only Officer In-charge can add new vehicles. You can review availability below.
           </p>
         )}
         {canAddVehicles && (
         <form onSubmit={onAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm text-white/90 mb-1">Vehicle type *</label>
+            <label className="block text-sm text-slate-700 mb-1">Vehicle type *</label>
             <select
               value={form.vehicle_type}
               onChange={onTypeChange}
@@ -293,7 +314,7 @@ export default function Vehicles() {
           </div>
 
           <div>
-            <label className="block text-sm text-white/90 mb-1">Seating capacity</label>
+            <label className="block text-sm text-slate-700 mb-1">Seating capacity</label>
             <input
               type="number"
               min={1}
@@ -306,7 +327,7 @@ export default function Vehicles() {
           </div>
 
           <div>
-            <label className="block text-sm text-white/90 mb-1">Vehicle count *</label>
+            <label className="block text-sm text-slate-700 mb-1">Vehicle count *</label>
             <input
               type="number"
               min={1}
@@ -320,14 +341,14 @@ export default function Vehicles() {
 
           {!isBusType && (
             <div>
-              <label className="block text-sm text-white/90 mb-1">Registration prefix (optional)</label>
+              <label className="block text-sm text-slate-700 mb-1">Registration prefix (optional)</label>
               <input
                 value={form.registration_prefix}
                 onChange={(e) => setForm((f) => ({ ...f, registration_prefix: e.target.value }))}
                 className="w-full rounded px-3 py-2 text-black"
                 placeholder={`e.g. ${form.vehicle_type || "TYPE"}`}
               />
-              <span className="text-xs text-white/70">
+              <span className="text-xs text-slate-500">
                 Cart vehicles do not require manual registration numbers.
               </span>
             </div>
@@ -335,7 +356,7 @@ export default function Vehicles() {
 
           {isBusType && (
             <div className="md:col-span-2 lg:col-span-4">
-              <label className="block text-sm text-white/90 mb-2">
+              <label className="block text-sm text-slate-700 mb-2">
                 Registration numbers (required for BUS, one per vehicle)
               </label>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -363,12 +384,12 @@ export default function Vehicles() {
           )}
 
           <div className="md:col-span-2 lg:col-span-4">
-            <label className="block text-sm text-white/90 mb-1">Images (optional – upload once per type, applies to all vehicles in this batch)</label>
+            <label className="block text-sm text-slate-700 mb-1">Images (optional – upload once per type, applies to all vehicles in this batch)</label>
             <div className="flex flex-wrap gap-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="text-sm">Image {i}</span>
-                  <div className="border border-white/30 rounded-lg bg-white/5 p-2 inline-flex items-center">
+                  <span className="text-sm text-slate-700">Image {i}</span>
+                  <div className="border border-slate-200 rounded-lg bg-slate-50 p-2 inline-flex items-center">
                     <input
                       ref={i === 1 ? fileRef1 : i === 2 ? fileRef2 : fileRef3}
                       type="file"
@@ -386,7 +407,7 @@ export default function Vehicles() {
                       Choose
                     </button>
                     {images[`image${i}`] && (
-                      <span className="ml-2 text-sm truncate max-w-[100px]">
+                      <span className="ml-2 text-sm text-slate-600 truncate max-w-[100px]">
                         {images[`image${i}`].name}
                       </span>
                     )}
@@ -415,16 +436,16 @@ export default function Vehicles() {
               key={s.type}
               type="button"
               onClick={() => setFilterType(s.type)}
-              className={`text-left rounded-xl p-4 border transition ${
+              className={`text-left rounded-xl p-4 border transition shadow-sm ${
                 filterType === s.type
-                  ? "bg-blue-500/20 border-blue-300"
-                  : "bg-white/10 border-white/20 hover:bg-white/15"
+                  ? "bg-blue-50 border-blue-300 ring-1 ring-blue-200"
+                  : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50"
               }`}
             >
-              <div className="font-semibold">{s.type}</div>
-              <div className="text-sm text-white/80 mt-1">Total: {s.total}</div>
-              <div className="text-sm text-green-200">Free to book: {s.free}</div>
-              <div className="text-sm text-blue-200">Booked: {s.booked}</div>
+              <div className="font-semibold text-slate-900">{s.type}</div>
+              <div className="text-sm text-slate-600 mt-1">Total: {s.total}</div>
+              <div className="text-sm text-green-700 font-medium">Working: {s.working}</div>
+              <div className="text-sm text-amber-700 font-medium">Unavailable: {s.unavailable}</div>
             </button>
           ))}
         </div>
@@ -432,11 +453,11 @@ export default function Vehicles() {
 
       {filterType && (
         <div className="mb-4 flex items-center gap-2">
-          <span className="text-white/90">Filtering by:</span>
-          <span className="font-medium">{filterType}</span>
+          <span className="text-slate-600">Filtering by:</span>
+          <span className="font-medium text-slate-900">{filterType}</span>
           <button
             onClick={() => setFilterType(null)}
-            className="text-blue-300 hover:underline text-sm"
+            className="text-blue-600 hover:underline text-sm"
           >
             Clear filter
           </button>
@@ -444,37 +465,38 @@ export default function Vehicles() {
       )}
 
       {!filterType && typeStats.length > 0 && (
-        <p className="mb-4 text-white/80 text-sm">
+        <p className="mb-4 text-slate-600 text-sm">
           Click a vehicle type card to view detailed vehicle list below.
         </p>
       )}
 
-      {loading && <p>Loading...</p>}
+      {loading && <p className="text-slate-600">Loading...</p>}
 
       {filterType && (
-      <div className="overflow-auto bg-white/10 rounded-xl">
+      <div className="overflow-auto bg-white rounded-xl border border-slate-200 shadow-[0_8px_24px_rgba(16,24,40,0.08)]">
         <table className="w-full text-sm">
-          <thead className="text-left bg-white/10">
+          <thead className="text-left bg-slate-50 text-slate-700">
             <tr>
               <th className="p-3">ID</th>
               <th className="p-3">Type</th>
               <th className="p-3">Seating capacity</th>
               <th className="p-3">Reg No</th>
-              <th className="p-3">Status</th>
+              <th className="p-3">Availability</th>
               <th className="p-3">Condition</th>
+              <th className="p-3">Bookings</th>
               <th className="p-3">Images</th>
-              <th className="p-3">Actions</th>
+              {canManageFleet && <th className="p-3">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filteredRows.map((v) => (
-              <tr key={v.id} className="border-t border-white/10">
+              <tr key={v.id} className="border-t border-slate-100">
                 <td className="p-3">{v.id}</td>
                 <td className="p-3">
                   <button
                     type="button"
                     onClick={() => setFilterType(normalizeVehicleType(v.vehicle_type))}
-                    className="text-blue-300 hover:underline font-medium"
+                    className="text-blue-600 hover:underline font-medium"
                   >
                     {normalizeVehicleType(v.vehicle_type)}
                   </button>
@@ -482,19 +504,26 @@ export default function Vehicles() {
                 <td className="p-3">{v.passenger_capacity}</td>
                 <td className="p-3">{v.registration_number}</td>
                 <td className="p-3">
-                  <span
-                    className={`px-2 py-0.5 rounded text-xs ${
-                      v.status === "Available"
-                        ? "bg-green-500/30"
-                        : v.status === "Booked"
-                          ? "bg-blue-500/30"
-                          : "bg-yellow-500/30"
-                    }`}
-                  >
-                    {v.status}
-                  </span>
+                  {v.status === "Unavailable" ? (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-900">
+                      Unavailable
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                      Working
+                    </span>
+                  )}
                 </td>
                 <td className="p-3">{v.condition_status || "-"}</td>
+                <td className="p-3">
+                  <button
+                    type="button"
+                    onClick={() => openBookedDates(v)}
+                    className="text-blue-700 hover:underline text-xs font-medium"
+                  >
+                    View booked dates
+                  </button>
+                </td>
                 <td className="p-3">
                   <div className="flex gap-2">
                     {[apiImg(v.image1), apiImg(v.image2), apiImg(v.image3)]
@@ -504,49 +533,51 @@ export default function Vehicles() {
                         <img
                           key={src}
                           src={src}
-                          className="w-10 h-10 rounded object-cover"
+                          className="w-10 h-10 rounded object-cover border border-slate-200"
                           alt=""
                         />
                       ))}
                   </div>
                 </td>
+                {canManageFleet && (
                 <td className="p-3">
                   <div className="flex flex-wrap gap-2">
                     <button
                       disabled={busyId === v.id}
                       onClick={() => openEdit(v)}
-                      className="bg-blue-500 hover:bg-blue-600 px-3 py-1 rounded disabled:opacity-60"
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-60 text-xs"
                     >
                       Edit
                     </button>
                     <button
                       disabled={busyId === v.id}
-                      onClick={() => onStatus(v.id, "Available")}
-                      className="bg-green-500 hover:bg-green-600 px-3 py-1 rounded disabled:opacity-60"
+                      onClick={() => onStatus(v.id, "Unavailable")}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded disabled:opacity-60 text-xs"
                     >
-                      Set Available
+                      Mark Unavailable
                     </button>
                     <button
                       disabled={busyId === v.id}
-                      onClick={() => onStatus(v.id, "Unavailable")}
-                      className="bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded disabled:opacity-60"
+                      onClick={() => onStatus(v.id, "Available")}
+                      className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded disabled:opacity-60 text-xs"
                     >
-                      Set Unavailable
+                      Mark Working
                     </button>
                     <button
                       disabled={busyId === v.id}
                       onClick={() => onDelete(v.id)}
-                      className="bg-red-500 hover:bg-red-600 px-3 py-1 rounded disabled:opacity-60"
+                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded disabled:opacity-60 text-xs"
                     >
                       Delete
                     </button>
                   </div>
                 </td>
+                )}
               </tr>
             ))}
             {!loading && filteredRows.length === 0 && (
               <tr>
-                <td className="p-6 text-white/80" colSpan={8}>
+                <td className="p-6 text-slate-500" colSpan={canManageFleet ? 9 : 8}>
                   {filterType ? `No vehicles of type ${filterType}.` : "No vehicles found."}
                 </td>
               </tr>
@@ -554,6 +585,70 @@ export default function Vehicles() {
           </tbody>
         </table>
       </div>
+      )}
+
+      {bookedModal && (
+        <div
+          className="fixed inset-0 z-[90] bg-black/70 flex items-center justify-center p-6"
+          onClick={() => setBookedModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-3xl p-6 shadow-2xl border border-gray-200 text-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-bold">
+                Booked dates — vehicle #{bookedModal.id} ({normalizeVehicleType(bookedModal.vehicle_type)})
+              </h2>
+              <button
+                type="button"
+                onClick={() => setBookedModal(null)}
+                className="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm"
+              >
+                Close
+              </button>
+            </div>
+
+            {bookedLoading && <p className="text-sm text-gray-600">Loading...</p>}
+            {bookedError && <p className="text-sm text-red-600 mb-2">{bookedError}</p>}
+
+            {!bookedLoading && !bookedError && (
+              <div className="max-h-[60vh] overflow-auto border rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="text-left bg-slate-50 text-slate-700">
+                    <tr>
+                      <th className="p-3">Date</th>
+                      <th className="p-3">Start</th>
+                      <th className="p-3">End</th>
+                      <th className="p-3">Route</th>
+                      <th className="p-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bookedRows.map((b) => (
+                      <tr key={b.id} className="border-t border-slate-100">
+                        <td className="p-3">{String(b.start_time).slice(0, 10)}</td>
+                        <td className="p-3">{new Date(b.start_time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
+                        <td className="p-3">{new Date(b.end_time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
+                        <td className="p-3">
+                          {b.pickup_location} → {b.drop_location}
+                        </td>
+                        <td className="p-3">{b.status}</td>
+                      </tr>
+                    ))}
+                    {bookedRows.length === 0 && (
+                      <tr>
+                        <td className="p-6 text-slate-500" colSpan={5}>
+                          No bookings found in the configured range.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {editVehicle && (

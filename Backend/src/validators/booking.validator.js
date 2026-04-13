@@ -72,6 +72,17 @@ exports.assignDriverSchema = Joi.object({
     })
 });
 
+exports.supervisorAllotSchema = Joi.object({
+  vehicle_id: Joi.number().integer().optional(),
+  driver_name: Joi.string().min(3).max(100).required(),
+  driver_phone: Joi.string()
+    .pattern(/^[0-9]{10}$/)
+    .required()
+    .messages({
+      "string.pattern.base": "Driver phone must be 10 digits"
+    })
+});
+
 exports.cancellationSchema = Joi.object({
   reason: Joi.string()
     .min(5)
