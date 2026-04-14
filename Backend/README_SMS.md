@@ -1,30 +1,39 @@
-# SMS Notifications (Production-ready)
+# SMS Notifications (Twilio)
 
 This backend sends **two SMS notifications to the driver**:
 
 1. **Booking confirmed (OIC approved)** – immediately after OIC approves and the booking becomes `Assigned`.
 2. **Trip reminder (4 hours before start)** – automatically, exactly once per booking.
 
-## 1) Provider integration (Fast2SMS – current code)
+## 1) Provider integration (Twilio – current code)
 
-This project already uses **Fast2SMS** in `src/services/smsService.js`.
+This project uses **Twilio** in `src/services/smsService.js`.
 
 ### Required environment variables
 
 Set these in your production `.env`:
 
-- `SMS_API_KEY`: Fast2SMS API key
+- `TWILIO_ACCOUNT_SID`: Twilio Account SID
+- `TWILIO_AUTH_TOKEN`: Twilio Auth Token
+- **Either**
+  - `TWILIO_MESSAGING_SERVICE_SID`: Messaging Service SID (recommended)
+  - **or** `TWILIO_FROM_NUMBER`: Twilio phone number (E.164), e.g. `+14155552671`
 
-### What you must do in Fast2SMS
+### Optional environment variables
 
-- Create a Fast2SMS account
-- Generate an API key
-- Ensure your account is enabled for transactional SMS (or the route you use)
+- `TWILIO_DEFAULT_COUNTRY_CODE`: Defaults to `91`. If you store 10-digit numbers in DB (India), the backend converts them to E.164 using this country code.
+
+### What you must do in Twilio
+
+- Create a Twilio account
+- Get your **Account SID** and **Auth Token**
+- Create a **Messaging Service** (recommended) and copy its SID
+  - or buy/configure a Twilio phone number to use as `TWILIO_FROM_NUMBER`
 
 ### Notes for production
 
-- Use a dedicated sender ID / route approved for your traffic type (transactional).
-- Confirm DLT/template requirements (India) with your provider.
+- If you’re sending in India, ensure you comply with **DLT** requirements (templates / sender IDs) as applicable for your use-case.
+- Prefer a Messaging Service if you may add multiple sender numbers later.
 
 ## 2) How the system avoids duplicate reminders
 
@@ -52,7 +61,7 @@ This guarantees:
 
 ## 5) Going live checklist
 
-- Set `SMS_API_KEY` in production environment (never commit secrets)
+- Set Twilio env vars in production (never commit secrets)
 - Confirm driver phone numbers are valid 10-digit numbers in the database
 - Ensure server timezone behavior matches your operational expectation (messages format uses `Asia/Kolkata`)
 - Confirm your hosting keeps the Node process running continuously (cron runs inside the server process)
