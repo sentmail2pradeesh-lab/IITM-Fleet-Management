@@ -1,14 +1,6 @@
 const Joi = require("joi");
 
 exports.createBookingSchema = Joi.object({
-  vehicle_id: Joi.number()
-    .integer()
-    .required()
-    .messages({
-      "any.required": "Vehicle ID is required",
-      "number.base": "Vehicle ID must be a number"
-    }),
-
   start_time: Joi.date()
     .iso()
     .required()
@@ -55,7 +47,24 @@ exports.createBookingSchema = Joi.object({
     .integer()
     .min(1)
     .max(100)
+    .required(),
+
+  hod_name: Joi.string()
+    .min(3)
+    .max(200)
     .required()
+    .messages({
+      "any.required": "Guide/HoD name is required"
+    }),
+
+  hod_email: Joi.string()
+    .email()
+    .max(320)
+    .required()
+    .messages({
+      "any.required": "Guide/HoD email is required",
+      "string.email": "Guide/HoD email must be a valid email address"
+    })
 });
 
 exports.assignDriverSchema = Joi.object({

@@ -43,8 +43,8 @@ const createUser = async (req, res, next) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const normalizedRole = String(role || "").trim().toLowerCase();
 
-    if (!name || !normalizedEmail || !password || !normalizedRole) {
-      return res.status(400).json({ message: "name, email, password and role are required" });
+    if (!name || !normalizedEmail || !normalizedRole) {
+      return res.status(400).json({ message: "name, email and role are required" });
     }
 
     if (!["supervisor", "driver"].includes(normalizedRole)) {
@@ -55,7 +55,15 @@ const createUser = async (req, res, next) => {
       return res.status(400).json({ message: "Supervisor must use IIT registered email" });
     }
 
-    const hashed = await bcrypt.hash(String(password), 10);
+    let finalPassword = String(password || "").trim();
+    if (normalizedRole === "supervisor" && !finalPassword) {
+      return res.status(400).json({ message: "Temporary password is required for supervisor" });
+    }
+    if (normalizedRole === "driver" && !finalPassword) {
+      finalPassword = `Drv@${Math.random().toString(36).slice(-8)}`;
+    }
+
+    const hashed = await bcrypt.hash(finalPassword, 10);
     const userType = normalizedRole;
     const result = await pool.query(
       `INSERT INTO users (name, email, password, phone, role, user_type)

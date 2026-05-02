@@ -9,6 +9,8 @@ const {
 
 const scheduleService = require("../../services/scheduleService");
 const pool = require("../../config/db");   // needed for DB query
+const emailService = require("../../config/email");
+const { sendSMS } = require("../../services/smsService");
 
 
 const addVehicle = async (req, res) => {
@@ -144,9 +146,72 @@ const updateVehicleById = async (req, res, next) => {
 
 const changeVehicleStatus = async (req, res, next) => {
   try {
+    const status = String(req.body?.status || "").trim();
+    const reason = String(req.body?.reason || "").trim();
+    const vehicleId = Number(req.params.id);
+
+    if (!status) {
+      return res.status(400).json({ message: "status is required" });
+    }
+    if (!Number.isFinite(vehicleId)) {
+      return res.status(400).json({ message: "Invalid vehicle id" });
+    }
+    if (status === "Unavailable" && !reason) {
+      return res.status(400).json({ message: "Reason is required to mark vehicle unavailable" });
+    }
+
+    if (status === "Unavailable") {
+      const bookingsRes = await pool.query(
+        `SELECT b.id, b.start_time, b.end_time, b.pickup_location, b.drop_location, b.driver_phone,
+                u.name, u.email
+         FROM bookings b
+         JOIN users u ON u.id = b.user_id
+         WHERE b.vehicle_id = $1
+           AND b.status IN ('Approved', 'Assigned', 'Delayed', 'In Progress', 'Pending OIC Approval')
+         ORDER BY b.start_time ASC`,
+        [vehicleId]
+      );
+
+      // Move all affected active trips back to supervisor queue for fresh reassignment.
+      await pool.query(
+        `UPDATE bookings
+         SET status = 'Guide Approved',
+             vehicle_id = NULL,
+             driver_name = NULL,
+             driver_phone = NULL
+         WHERE vehicle_id = $1
+           AND status IN ('Approved', 'Assigned', 'Delayed', 'Pending OIC Approval')`,
+        [vehicleId]
+      );
+
+      for (const row of bookingsRes.rows) {
+        const message = `Vehicle #${vehicleId} is marked unavailable.
+Reason: ${reason}
+
+Management will arrange another vehicle.
+Booking ID: ${row.id}
+Start: ${row.start_time}
+End: ${row.end_time}
+Route: ${row.pickup_location} -> ${row.drop_location}`;
+
+        await emailService.sendEmail({
+          to: row.email,
+          subject: "Vehicle unavailable for your booking",
+          text: `Dear ${row.name},\n\n${message}\n\nRegards,\nIITM Fleet`
+        }).catch((e) => console.error("Vehicle unavailable email failed:", e.message));
+
+        if (row.driver_phone) {
+          await sendSMS(
+            row.driver_phone,
+            `Booking ${row.id}: allotted vehicle is unavailable (${reason}). You will be notified with another vehicle.`
+          ).catch((e) => console.error("Driver unavailable SMS failed:", e.message));
+        }
+      }
+    }
+
     const vehicle = await updateVehicleStatus(
       req.params.id,
-      req.body.status
+      status
     );
     res.json(vehicle);
   } catch (err) {
@@ -193,44 +258,90 @@ const getVehicleSchedule = async (req,res,next) => {
 
 const getVehicleAvailabilitySummary = async (req, res, next) => {
   try {
-    const { date } = req.query;
+    const { date, start_time, end_time } = req.query;
     if (!date) {
       return res.status(400).json({
         message: "Date is required"
       });
+    }
+    const windowStart = start_time ? new Date(String(start_time)) : null;
+    const windowEnd = end_time ? new Date(String(end_time)) : null;
+
+    const capacityRes = await pool.query(
+      `SELECT vehicle_type, MAX(passenger_capacity) AS passenger_capacity
+       FROM vehicles
+       GROUP BY vehicle_type`
+    );
+    const capacityByType = new Map(
+      (capacityRes.rows || []).map((r) => [
+        r.vehicle_type || "Unknown",
+        Number(r.passenger_capacity) || null
+      ])
+    );
+
+    const activeStatuses = [
+      "Pending OIC Approval",
+      "Approved",
+      "Assigned",
+      "Delayed",
+      "In Progress"
+    ];
+    let overlapClause = `DATE(b.start_time) = $2::date`;
+    let values = [activeStatuses, date];
+    if (
+      windowStart &&
+      windowEnd &&
+      !Number.isNaN(windowStart.getTime()) &&
+      !Number.isNaN(windowEnd.getTime())
+    ) {
+      values = [activeStatuses, windowStart.toISOString(), windowEnd.toISOString()];
+      overlapClause = `b.start_time < $2::timestamptz AND b.end_time > $3::timestamptz`;
     }
 
     const booked = await pool.query(
       `SELECT DISTINCT v.id, v.vehicle_type
        FROM vehicles v
        JOIN bookings b ON b.vehicle_id = v.id
-       WHERE DATE(b.start_time) = $1`,
-      [date]
+       WHERE b.status = ANY($1::text[])
+         AND (${overlapClause})`,
+      values
     );
 
     const available = await pool.query(
       `SELECT v.id, v.vehicle_type
        FROM vehicles v
-       WHERE v.id NOT IN (
-         SELECT vehicle_id
-         FROM bookings
-         WHERE DATE(start_time) = $1
-       )`,
-      [date]
+       WHERE v.status = 'Available'
+         AND v.id NOT IN (
+           SELECT b.vehicle_id
+           FROM bookings b
+           WHERE b.status = ANY($1::text[])
+             AND (${overlapClause})
+         )`,
+      values
     );
 
     const byType = new Map();
     for (const row of available.rows) {
       const key = row.vehicle_type || "Unknown";
       const curr =
-        byType.get(key) || { vehicle_type: key, available_count: 0, booked_count: 0 };
+        byType.get(key) || {
+          vehicle_type: key,
+          passenger_capacity: capacityByType.get(key) ?? null,
+          available_count: 0,
+          booked_count: 0
+        };
       curr.available_count += 1;
       byType.set(key, curr);
     }
     for (const row of booked.rows) {
       const key = row.vehicle_type || "Unknown";
       const curr =
-        byType.get(key) || { vehicle_type: key, available_count: 0, booked_count: 0 };
+        byType.get(key) || {
+          vehicle_type: key,
+          passenger_capacity: capacityByType.get(key) ?? null,
+          available_count: 0,
+          booked_count: 0
+        };
       curr.booked_count += 1;
       byType.set(key, curr);
     }
@@ -247,24 +358,51 @@ const getVehicleAvailabilitySummary = async (req, res, next) => {
 
 const getVehicleAvailabilityByType = async (req, res, next) => {
   try {
-    const { date, type } = req.query;
+    const { date, type, start_time, end_time } = req.query;
     if (!date || !type) {
       return res.status(400).json({
         message: "date and type are required"
       });
+    }
+    const windowStart = start_time ? new Date(String(start_time)) : null;
+    const windowEnd = end_time ? new Date(String(end_time)) : null;
+    const activeStatuses = [
+      "Pending OIC Approval",
+      "Approved",
+      "Assigned",
+      "Delayed",
+      "In Progress"
+    ];
+    let overlapClause = `DATE(b.start_time) = $3::date`;
+    let values = [activeStatuses, type, date];
+    if (
+      windowStart &&
+      windowEnd &&
+      !Number.isNaN(windowStart.getTime()) &&
+      !Number.isNaN(windowEnd.getTime())
+    ) {
+      values = [
+        activeStatuses,
+        type,
+        windowStart.toISOString(),
+        windowEnd.toISOString()
+      ];
+      overlapClause = `b.start_time < $3::timestamptz AND b.end_time > $4::timestamptz`;
     }
 
     const availableRes = await pool.query(
       `SELECT *
        FROM vehicles
        WHERE vehicle_type = $2
+         AND status = 'Available'
          AND id NOT IN (
-           SELECT vehicle_id
-           FROM bookings
-           WHERE DATE(start_time) = $1
+           SELECT b.vehicle_id
+           FROM bookings b
+           WHERE b.status = ANY($1::text[])
+             AND (${overlapClause})
          )
        ORDER BY id ASC`,
-      [date, type]
+      values
     );
 
     const bookedRes = await pool.query(
@@ -272,9 +410,10 @@ const getVehicleAvailabilityByType = async (req, res, next) => {
        FROM vehicles v
        JOIN bookings b ON b.vehicle_id = v.id
        WHERE v.vehicle_type = $2
-         AND DATE(b.start_time) = $1
+         AND b.status = ANY($1::text[])
+         AND (${overlapClause})
        ORDER BY v.id ASC`,
-      [date, type]
+      values
     );
 
     res.json({
@@ -292,7 +431,7 @@ const getVehicleAvailabilityByType = async (req, res, next) => {
 const getAvailableVehicles = async (req, res, next) => {
   try {
 
-    const { date } = req.query;
+    const { date, start_time, end_time } = req.query;
 
     if (!date) {
       return res.status(400).json({
@@ -300,17 +439,40 @@ const getAvailableVehicles = async (req, res, next) => {
       });
     }
 
+    const windowStart = start_time ? new Date(String(start_time)) : null;
+    const windowEnd = end_time ? new Date(String(end_time)) : null;
+    const activeStatuses = [
+      "Pending OIC Approval",
+      "Approved",
+      "Assigned",
+      "Delayed",
+      "In Progress"
+    ];
+    let overlapClause = `DATE(b.start_time) = $2::date`;
+    let values = [activeStatuses, date];
+    if (
+      windowStart &&
+      windowEnd &&
+      !Number.isNaN(windowStart.getTime()) &&
+      !Number.isNaN(windowEnd.getTime())
+    ) {
+      values = [activeStatuses, windowStart.toISOString(), windowEnd.toISOString()];
+      overlapClause = `b.start_time < $2::timestamptz AND b.end_time > $3::timestamptz`;
+    }
+
     const result = await pool.query(
       `
       SELECT *
       FROM vehicles
-      WHERE id NOT IN (
-        SELECT vehicle_id
-        FROM bookings
-        WHERE DATE(start_time) = $1
-      )
+      WHERE status = 'Available'
+        AND id NOT IN (
+          SELECT b.vehicle_id
+          FROM bookings b
+          WHERE b.status = ANY($1::text[])
+            AND (${overlapClause})
+        )
       `,
-      [date]
+      values
     );
 
     res.json(result.rows);

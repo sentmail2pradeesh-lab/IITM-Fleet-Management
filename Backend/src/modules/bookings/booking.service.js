@@ -5,7 +5,6 @@ const { isVehicleAvailable } = require('../../services/availabilityService');
 const createBooking = async (data, userId, filePath) => {
 
   const {
-    vehicle_id,
     start_time,
     end_time,
     purpose,
@@ -15,42 +14,12 @@ const createBooking = async (data, userId, filePath) => {
     return_pickup_time,
     campus_type,
     passenger_count,
-    hod_email
+    hod_email,
+    hod_name
   } = data;
 
   if (new Date(start_time) >= new Date(end_time)) {
     throw new Error('Invalid time range');
-  }
-
-  // Ensure vehicle exists and capacity is sufficient
-  const vehicleResult = await pool.query(
-    `SELECT passenger_capacity, vehicle_type FROM vehicles WHERE id = $1`,
-    [vehicle_id]
-  );
-
-  if (vehicleResult.rowCount === 0) {
-    throw new Error('Selected vehicle does not exist');
-  }
-
-  const capacity = vehicleResult.rows[0].passenger_capacity;
-  const vehicleType = String(vehicleResult.rows[0].vehicle_type || "");
-  if (passenger_count > capacity) {
-    throw new Error(
-      `Passenger count (${passenger_count}) exceeds vehicle capacity (${capacity})`
-    );
-  }
-  if (vehicleType.toLowerCase().includes("cart") && campus_type === "outside") {
-    throw new Error("Cart booking is only allowed for Inside IITM trips");
-  }
-
-  const isAvailable = await availabilityService.isVehicleAvailable(
-    vehicle_id,
-    start_time,
-    end_time
-  );
-
-  if (!isAvailable) {
-    throw new Error('Vehicle not available for selected time');
   }
 
   const result = await pool.query(
@@ -67,16 +36,17 @@ const createBooking = async (data, userId, filePath) => {
       campus_type,
       passenger_count,
       hod_email,
+      hod_name,
       document_url,
       status
     )
     VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'Pending Guide Approval'
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'Pending Guide Approval'
     )
     RETURNING *`,
     [
       userId,
-      vehicle_id,
+      null,
       start_time,
       end_time,
       purpose,
@@ -87,6 +57,7 @@ const createBooking = async (data, userId, filePath) => {
       campus_type,
       passenger_count,
       hod_email,
+      hod_name,
       filePath
     ]
   );
@@ -123,6 +94,7 @@ const getUpcomingBookings = async () => {
        'Delayed',
        'In Progress'
      )
+     AND b.end_time >= NOW()
      ORDER BY b.start_time ASC`
   );
 

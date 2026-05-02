@@ -16,6 +16,8 @@ const {
   viewUpcoming,
   guideApprove,
   guideReject,
+  viewGuideEmailRequest,
+  submitGuideEmailDecision,
   approve,
   supervisorAllot,
   reject,
@@ -112,6 +114,10 @@ router.get(
   allowRole("guide_hod"),
   viewGuidePending
 );
+
+// Public guide email actions (no login)
+router.get("/guide-email/:token", asyncHandler(viewGuideEmailRequest));
+router.post("/guide-email/:token", express.json(), asyncHandler(submitGuideEmailDecision));
 
 // Requester booking history
 router.get(

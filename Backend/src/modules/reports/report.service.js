@@ -14,10 +14,19 @@ exports.getUsageByDateRange = async (startDate, endDate, vehicleType = null) => 
       v.vehicle_type,
       v.registration_number AS vehicle_name,
       COUNT(b.id) AS total_trips,
-      COALESCE(SUM(EXTRACT(EPOCH FROM (b.actual_end_time - b.actual_start_time)) / 3600), 0) AS total_hours
+      COALESCE(
+        SUM(
+          EXTRACT(
+            EPOCH FROM (
+              COALESCE(b.actual_end_time, b.end_time) - COALESCE(b.actual_start_time, b.start_time)
+            )
+          ) / 3600
+        ),
+        0
+      ) AS total_hours
     FROM public.bookings b
     JOIN public.vehicles v ON b.vehicle_id = v.id
-    WHERE b.status = 'Completed'
+    WHERE b.status IN ('Assigned', 'In Progress', 'Completed')
       AND b.start_time BETWEEN $1 AND $2
       ${vehicleClause}
     GROUP BY v.id, v.vehicle_type, v.registration_number

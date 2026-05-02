@@ -17,12 +17,23 @@ const allowedOrigins = [
   "https://fleetbookingportal.netlify.app"
 ];
 
+function isAllowedDevOrigin(origin) {
+  // Allow LAN IP / localhost dev origins (for mobile testing on same Wi‑Fi)
+  // Examples: http://192.168.1.10:5173 , http://127.0.0.1:5173
+  return /^http:\/\/(localhost|127\.0\.0\.1|\d{1,3}(\.\d{1,3}){3})(:\d+)?$/i.test(origin);
+}
+
+for (const envKey of ["FRONTEND_PUBLIC_URL", "PUBLIC_FRONTEND_URL", "FRONTEND_URL"]) {
+  const v = process.env[envKey];
+  if (v && typeof v === "string") allowedOrigins.push(v.replace(/\/+$/, ""));
+}
+
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true); // allow Postman / backend calls
 
-      if (allowedOrigins.includes(origin)) {
+      if (allowedOrigins.includes(origin) || isAllowedDevOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
@@ -58,6 +69,11 @@ app.get('/health', (req, res) => {
 app.use("/uploads", express.static("uploads"));
 
 const pool = require('./config/db');
+const { ensureSchema } = require("./utils/ensureSchema");
+
+ensureSchema().catch((e) => {
+  console.error("Schema ensure failed:", e?.message || e);
+});
 
 app.get('/db-test', async (req, res) => {
   const result = await pool.query('SELECT NOW()');

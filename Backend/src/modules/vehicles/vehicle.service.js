@@ -120,18 +120,36 @@ const updateVehicle = async (id, {
 };
 
 const deleteVehicle = async (id) => {
-
-  // check active bookings
+  // check non-terminal bookings
   const bookingCheck = await pool.query(
     `SELECT id FROM bookings
      WHERE vehicle_id = $1
-     AND status IN ('Approved','Assigned','In Progress')`,
+     AND status NOT IN ('Rejected', 'Cancelled', 'Completed')`,
     [id]
   );
 
+  const vehicleRes = await pool.query(`SELECT status FROM vehicles WHERE id = $1`, [id]);
+  const vehicleStatus = vehicleRes.rows?.[0]?.status;
+
   if (bookingCheck.rowCount > 0) {
-    throw new Error("Vehicle cannot be deleted. Active bookings exist.");
+    if (vehicleStatus !== "Unavailable") {
+      throw new Error(
+        "Vehicle has active bookings. Mark it as Unavailable first so affected trips can be moved for reassignment."
+      );
+    }
+    throw new Error(
+      "Vehicle still has active bookings pending reassignment. Complete reassignment from Supervisor Pending Requests and try again."
+    );
   }
+
+  // keep booking history while allowing deletion of unused/terminal vehicles
+  await pool.query(
+    `UPDATE bookings
+     SET vehicle_id = NULL
+     WHERE vehicle_id = $1
+       AND status IN ('Rejected', 'Cancelled', 'Completed')`,
+    [id]
+  );
 
   const result = await pool.query(
     `DELETE FROM vehicles

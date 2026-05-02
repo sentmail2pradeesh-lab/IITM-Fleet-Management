@@ -43,14 +43,14 @@ const reportController = require("./report.controller");
 router.get(
   "/usage",
   verifyToken,
-  allowRole("approver"),
+  allowRole(["oic", "approver", "supervisor"]),
   reportController.getReport
 );
 
 router.get(
   "/vehicle-types",
   verifyToken,
-  allowRole("approver"),
+  allowRole(["oic", "approver", "supervisor"]),
   reportController.getVehicleTypes
 );
 

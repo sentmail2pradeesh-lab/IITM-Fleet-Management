@@ -10,30 +10,44 @@ const emailService = require("../../config/email");
 const smsNotificationService = require("../../services/smsNotificationService");
 const { isValidTransition } = require("../../utils/bookingStateValidator");
 const { logAction } = require("../../utils/auditLogger");
+const jwt = require("jsonwebtoken");
+
+function makeGuideActionToken({ bookingId, guideEmail }) {
+  const secret = process.env.GUIDE_ACTION_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error("Missing GUIDE_ACTION_SECRET / JWT_SECRET");
+  return jwt.sign(
+    { bookingId: Number(bookingId), guideEmail: String(guideEmail || "").toLowerCase() },
+    secret,
+    { expiresIn: "7d" }
+  );
+}
+
+function verifyGuideActionToken(token) {
+  const secret = process.env.GUIDE_ACTION_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error("Missing GUIDE_ACTION_SECRET / JWT_SECRET");
+  return jwt.verify(token, secret);
+}
+
+function getPublicFrontendBaseUrl() {
+  return (
+    process.env.FRONTEND_PUBLIC_URL ||
+    process.env.PUBLIC_FRONTEND_URL ||
+    process.env.FRONTEND_URL ||
+    "http://localhost:5173"
+  ).replace(/\/+$/, "");
+}
 
 
 const bookVehicle = async (req, res, next) => {
   try {
     const {
-      vehicle_id,
       start_time,
       end_time,
       pickup_location,
-      drop_location
+      drop_location,
+      hod_email,
+      hod_name
     } = req.body;
-
-    // Check availability
-    const available = await availabilityService.isVehicleAvailable(
-      vehicle_id,
-      start_time,
-      end_time
-    );
-
-    if (!available) {
-      return res.status(400).json({
-        error: "Vehicle not available with buffer time"
-      });
-    }
 
     const filePath = req.file ? req.file.path : null;
 
@@ -62,7 +76,6 @@ Dear ${user.name},
 
 Your booking request has been submitted.
 
-Vehicle ID: ${vehicle_id}
 Start Time: ${start_time}
 End Time: ${end_time}
 Pickup: ${pickup_location}
@@ -75,22 +88,26 @@ IITM Transport System
         `
       });
 
-      // Send Email to Guide / HoD (first-level approval)
+      // Send Email to Guide / HoD (email-based recommend / not recommend)
+      const token = makeGuideActionToken({ bookingId: booking.id, guideEmail: hod_email });
+      const frontendBase = getPublicFrontendBaseUrl();
+      const actionUrl = `${frontendBase}/guide/recommend?token=${encodeURIComponent(token)}`;
       await emailService.sendEmail({
-        to: process.env.HOD_EMAIL || process.env.APPROVER_EMAIL,
-        subject: "New Booking Request - Guide/HoD Approval Required",
+        to: hod_email,
+        subject: "New Vehicle Request - Recommendation Required",
         text: `
-New booking request submitted.
+New vehicle request submitted.
 
 User: ${user.name}
 Email: ${user.email}
-Vehicle ID: ${vehicle_id}
+Guide/HoD: ${hod_name || "-"} (${hod_email || "-"})
 Start: ${start_time}
 End: ${end_time}
 Pickup: ${pickup_location}
 Drop: ${drop_location}
 
-Please review and approve/reject at Guide/HoD level.
+Please review full request details and choose Recommend / Not Recommend here:
+${actionUrl}
         `
       });
 
@@ -102,6 +119,159 @@ Please review and approve/reject at Guide/HoD level.
 
   } catch (err) {
     next(err);
+  }
+};
+
+// Public endpoint: guide views request details from email link (no login)
+const viewGuideEmailRequest = async (req, res, next) => {
+  try {
+    const token = String(req.params.token || "");
+    const payload = verifyGuideActionToken(token);
+    const bookingId = Number(payload.bookingId);
+    const guideEmail = String(payload.guideEmail || "").toLowerCase();
+
+    const result = await pool.query(
+      `SELECT b.*, u.name as requester_name, u.email as requester_email
+       FROM bookings b
+       JOIN users u ON b.user_id = u.id
+       WHERE b.id = $1`,
+      [bookingId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ message: "Booking not found" });
+    const booking = result.rows[0];
+    if (String(booking.hod_email || "").toLowerCase() !== guideEmail) {
+      return res.status(403).json({ message: "This link is not for this email address" });
+    }
+
+    return res.json({
+      booking: {
+        id: booking.id,
+        status: booking.status,
+        start_time: booking.start_time,
+        end_time: booking.end_time,
+        pickup_location: booking.pickup_location,
+        drop_location: booking.drop_location,
+        passenger_count: booking.passenger_count,
+        purpose: booking.purpose,
+        campus_type: booking.campus_type,
+        return_required: booking.return_required,
+        return_pickup_time: booking.return_pickup_time,
+        document_url: booking.document_url,
+        hod_name: booking.hod_name,
+        hod_email: booking.hod_email
+      },
+      requester: {
+        name: booking.requester_name,
+        email: booking.requester_email
+      }
+    });
+  } catch (err) {
+    return res.status(400).json({ message: "Invalid or expired link" });
+  }
+};
+
+// Public endpoint: guide submits Recommend / Not Recommend from email link
+const submitGuideEmailDecision = async (req, res, next) => {
+  try {
+    const token = String(req.params.token || "");
+    const payload = verifyGuideActionToken(token);
+    const bookingId = Number(payload.bookingId);
+    const guideEmail = String(payload.guideEmail || "").toLowerCase();
+    const decision = String(req.body?.decision || "").toLowerCase(); // recommend | not_recommend
+    const remarks = String(req.body?.remarks || "").trim();
+
+    const bookingData = await pool.query(`SELECT * FROM bookings WHERE id = $1`, [bookingId]);
+    if (bookingData.rowCount === 0) return res.status(404).json({ message: "Booking not found" });
+    const booking = bookingData.rows[0];
+
+    if (String(booking.hod_email || "").toLowerCase() !== guideEmail) {
+      return res.status(403).json({ message: "This link is not for this email address" });
+    }
+    if (booking.status !== "Pending Guide Approval") {
+      return res.status(400).json({
+        message: `This request is already processed (status: ${booking.status})`
+      });
+    }
+
+    if (decision !== "recommend" && decision !== "not_recommend") {
+      return res.status(400).json({ message: "Invalid decision" });
+    }
+
+    if (decision === "recommend") {
+      const result = await pool.query(
+        `UPDATE bookings SET status = 'Guide Approved' WHERE id = $1 RETURNING *`,
+        [bookingId]
+      );
+      const updatedBooking = result.rows[0];
+
+      await logAction({
+        bookingId: updatedBooking.id,
+        performedBy: null,
+        action: "GUIDE_RECOMMENDED_EMAIL",
+        oldStatus: booking.status,
+        newStatus: "Guide Approved",
+        ip: req.ip,
+        remarks
+      });
+
+      const userResult = await pool.query(`SELECT name, email FROM users WHERE id = $1`, [updatedBooking.user_id]);
+      const user = userResult.rows[0];
+      const supervisorEmail = process.env.SUPERVISOR_EMAIL || process.env.APPROVER_EMAIL;
+
+      try {
+        await emailService.sendEmail({
+          to: user.email,
+          subject: "Vehicle request recommended by Guide/HoD",
+          text: `Dear ${user.name},\n\nYour vehicle request has been recommended by your Guide/HoD and sent to Transport Supervisor for allotment.\n\nBooking ID: ${updatedBooking.id}\nStart: ${updatedBooking.start_time}\nEnd: ${updatedBooking.end_time}\n\nRegards,\nIITM Fleet`
+        });
+        if (supervisorEmail) {
+          await emailService.sendEmail({
+            to: supervisorEmail,
+            subject: "Guide/HoD recommended request - action required",
+            text: `Booking ID: ${updatedBooking.id}\nRequester: ${user.name} (${user.email})\nStart: ${updatedBooking.start_time}\nEnd: ${updatedBooking.end_time}\n\nPlease allot vehicle/driver in supervisor dashboard.`
+          });
+        }
+      } catch (emailError) {
+        console.error("Guide recommend email failed:", emailError.message);
+      }
+
+      return res.json(updatedBooking);
+    }
+
+    if (!remarks) {
+      return res.status(400).json({ message: "Remarks are required for Not Recommend" });
+    }
+    const result = await pool.query(
+      `UPDATE bookings SET status = 'Rejected', rejection_reason = $2 WHERE id = $1 RETURNING *`,
+      [bookingId, remarks]
+    );
+    const updatedBooking = result.rows[0];
+
+    await logAction({
+      bookingId: updatedBooking.id,
+      performedBy: null,
+      action: "GUIDE_NOT_RECOMMENDED_EMAIL",
+      oldStatus: booking.status,
+      newStatus: "Rejected",
+      ip: req.ip,
+      remarks
+    });
+
+    const userResult = await pool.query(`SELECT name, email FROM users WHERE id = $1`, [updatedBooking.user_id]);
+    const user = userResult.rows[0];
+    try {
+      await emailService.sendEmail({
+        to: user.email,
+        subject: "Vehicle request not recommended by Guide/HoD",
+        text: `Dear ${user.name},\n\nYour vehicle request was not recommended by your Guide/HoD.\n\nBooking ID: ${updatedBooking.id}\nRemarks: ${remarks}\n\nRegards,\nIITM Fleet`
+      });
+    } catch (emailError) {
+      console.error("Guide not recommend email failed:", emailError.message);
+    }
+
+    return res.json(updatedBooking);
+  } catch (err) {
+    return res.status(400).json({ message: "Invalid or expired link" });
   }
 };
 
@@ -494,10 +664,6 @@ const supervisorAllot = async (req, res, next) => {
         message: `Passenger count (${booking.passenger_count}) exceeds vehicle capacity (${capacity})`
       });
     }
-    if (vehicleType.toLowerCase().includes("cart") && booking.campus_type === "outside") {
-      return res.status(400).json({ message: "Cart booking is only allowed for Inside IITM trips" });
-    }
-
     const available = await availabilityService.isVehicleAvailable(
       nextVehicleId,
       booking.start_time,
@@ -975,7 +1141,7 @@ const listMyBookings = async (req, res, next) => {
     const result = await pool.query(
       `SELECT b.*, v.vehicle_type, v.passenger_capacity
        FROM bookings b
-       JOIN vehicles v ON b.vehicle_id = v.id
+       LEFT JOIN vehicles v ON b.vehicle_id = v.id
        WHERE b.user_id = $1
        ORDER BY b.created_at DESC`,
       [req.user.id]
@@ -1187,6 +1353,8 @@ module.exports = {
   viewGuidePending,
   guideApprove,
   guideReject,
+  viewGuideEmailRequest,
+  submitGuideEmailDecision,
   viewUpcoming,
   approve,
   supervisorAllot,
