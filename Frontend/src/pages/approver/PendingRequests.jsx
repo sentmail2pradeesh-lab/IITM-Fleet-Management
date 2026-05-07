@@ -20,7 +20,18 @@ import {
 import { listUsers } from "../../api/userApi";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import SuccessCheck from "../../components/SuccessCheck";
+import { useTwoStepConfirm } from "../../components/TwoStepConfirm";
 import { AuthContext } from "../../context/AuthContext";
+
+function apiOrigin() {
+  const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+  try {
+    const u = new URL(base);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return "http://localhost:5000";
+  }
+}
 
 function formatDT(value) {
   try {
@@ -80,6 +91,7 @@ export default function PendingRequests() {
   const [oicFlowLoading, setOicFlowLoading] = useState(false);
   const [oicFlow, setOicFlow] = useState(null);
   const [oicApproveRemarks, setOicApproveRemarks] = useState("");
+  const { confirm, dialog: confirmDialog } = useTwoStepConfirm();
 
   const pending = useMemo(() => pendingRows, [pendingRows]);
   const upcoming = useMemo(() => upcomingRows, [upcomingRows]);
@@ -108,6 +120,13 @@ export default function PendingRequests() {
   }, []);
 
   const onApprove = async (bookingId) => {
+    const confirmed = await confirm({
+      title: "Approve Allotment",
+      primaryMessage: "Are you sure you want to approve this allotment?",
+      secondaryMessage: "Final confirmation: approve this allotment now?",
+      confirmLabel: "Approve"
+    });
+    if (!confirmed) return;
     setBusyId(bookingId);
     setError("");
     try {
@@ -125,7 +144,16 @@ export default function PendingRequests() {
     }
   };
 
-  const onReject = async (bookingId) => {
+  const onReject = async (bookingId, alreadyConfirmed = false) => {
+    if (!alreadyConfirmed) {
+      const confirmed = await confirm({
+        title: "Reject Request",
+        primaryMessage: "Are you sure you want to reject this request?",
+        secondaryMessage: "Final confirmation: reject this request now?",
+        confirmLabel: "Reject"
+      });
+      if (!confirmed) return;
+    }
     setBusyId(bookingId);
     setError("");
     try {
@@ -169,7 +197,11 @@ export default function PendingRequests() {
     setVehicleTab("available");
     setAllotLoading(true);
     try {
-      const res = await getVehicleAvailabilitySummary(startDate);
+      const res = await getVehicleAvailabilitySummary({
+        date: startDate,
+        start_time: booking?.start_time,
+        end_time: booking?.end_time
+      });
       setAllotSummary(res.data || []);
     } catch (e) {
       setAllotError(e?.response?.data?.message || "Failed to load vehicles");
@@ -186,7 +218,12 @@ export default function PendingRequests() {
     setAllotLoading(true);
     setAllotError("");
     try {
-      const res = await getVehicleAvailabilityByType({ date: startDate, type });
+      const res = await getVehicleAvailabilityByType({
+        date: startDate,
+        type,
+        start_time: booking?.start_time,
+        end_time: booking?.end_time
+      });
       const data = res.data || {};
       setTypeVehicles({
         available: data.available || [],
@@ -213,6 +250,13 @@ export default function PendingRequests() {
       alert("Select a vehicle.");
       return;
     }
+    const confirmed = await confirm({
+      title: "Send to OIC",
+      primaryMessage: "Are you sure you want to send this allotment to OIC?",
+      secondaryMessage: "Final confirmation: send this allotment for OIC approval?",
+      confirmLabel: "Send"
+    });
+    if (!confirmed) return;
     setAllotSubmitting(true);
     setError("");
     try {
@@ -277,7 +321,11 @@ export default function PendingRequests() {
     setReassignError("");
     setReassignLoading(true);
     try {
-      const res = await getAvailableVehicles(startDate);
+      const res = await getAvailableVehicles({
+        date: startDate,
+        start_time: booking?.start_time,
+        end_time: booking?.end_time
+      });
       setReassignVehicles(res.data || []);
       if (!res.data || res.data.length === 0) {
         setReassignError("No available vehicles found for that date.");
@@ -294,6 +342,13 @@ export default function PendingRequests() {
       alert("Select a vehicle to reassign.");
       return;
     }
+    const confirmed = await confirm({
+      title: "Reassign Vehicle",
+      primaryMessage: "Are you sure you want to reassign this vehicle?",
+      secondaryMessage: "Final confirmation: reassign with the selected vehicle?",
+      confirmLabel: "Reassign"
+    });
+    if (!confirmed) return;
     setBusyId(reassignBooking.id);
     setError("");
     try {
@@ -315,6 +370,13 @@ export default function PendingRequests() {
       alert("Please enter a reason for the issue.");
       return;
     }
+    const confirmed = await confirm({
+      title: "Report Issue",
+      primaryMessage: "Are you sure you want to report this issue and update booking status?",
+      secondaryMessage: "Final confirmation: submit this issue report?",
+      confirmLabel: "Submit"
+    });
+    if (!confirmed) return;
     setReportSubmitting(true);
     setError("");
     try {
@@ -384,7 +446,8 @@ export default function PendingRequests() {
             <tr>
               <th className="p-3">ID</th>
               <th className="p-3">Requester</th>
-              <th className="p-3">Vehicle</th>
+              <th className="p-3">Passengers</th>
+              <th className="p-3">Vehicle ID</th>
               <th className="p-3">Start</th>
               <th className="p-3">End</th>
               <th className="p-3">Status</th>
@@ -410,10 +473,11 @@ export default function PendingRequests() {
                     <div className="text-slate-500">{b.email}</div>
                   </td>
                   <td className="p-3">
-                    {b.vehicle_type || `#${b.vehicle_id}`}
-                    <div className="text-slate-500 text-xs">
-                      Pickup: {b.pickup_location}
-                    </div>
+                    {b.passenger_count ?? "-"}
+                  </td>
+                  <td className="p-3">
+                    {b.vehicle_id ? `#${b.vehicle_id}` : <span className="text-slate-400">Not allotted</span>}
+                    <div className="text-slate-500 text-xs">Pickup: {b.pickup_location}</div>
                     {b.status === "Pending OIC Approval" && b.driver_name && (
                       <div className="text-slate-600 text-xs mt-1">
                         Allotted: {b.driver_name} ({b.driver_phone})
@@ -455,16 +519,9 @@ export default function PendingRequests() {
                           <button
                             disabled={busyId === b.id}
                             onClick={() => openOicFlow(b.id)}
-                            className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-3 py-1 rounded disabled:opacity-60 soft-transition-long"
-                          >
-                            View full flow
-                          </button>
-                          <button
-                            disabled={busyId === b.id}
-                            onClick={() => onApprove(b.id)}
                             className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded disabled:opacity-60 soft-transition-long"
                           >
-                            Approve assignment
+                            Approve allotment
                           </button>
                         </>
                       )}
@@ -486,8 +543,15 @@ export default function PendingRequests() {
                             const reasonMsg = b.cancellation_reason
                               ? `Cancellation reason:\n${b.cancellation_reason}\n\nApprove cancellation?`
                               : "Approve cancellation?";
-                            const ok = window.confirm(reasonMsg);
-                            if (ok) onReject(b.id);
+                            const ok = confirm({
+                              title: "Approve Cancellation",
+                              primaryMessage: reasonMsg,
+                              secondaryMessage: "Final confirmation: approve this cancellation request?",
+                              confirmLabel: "Approve"
+                            });
+                            ok.then((allowed) => {
+                              if (allowed) onReject(b.id, true);
+                            });
                           }}
                             className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded disabled:opacity-60 soft-transition-long"
                         >
@@ -501,7 +565,7 @@ export default function PendingRequests() {
             })}
             {!loading && pending.length === 0 && (
               <tr>
-                <td className="p-6 text-slate-500" colSpan={7}>
+                <td className="p-6 text-slate-500" colSpan={8}>
                   No pending requests.
                 </td>
               </tr>
@@ -521,15 +585,10 @@ export default function PendingRequests() {
               <th className="p-3">Start</th>
               <th className="p-3">End</th>
               <th className="p-3">Status</th>
-              <th className="p-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {upcoming.map((b) => {
-              const canReassignVehicle =
-                b.status === "Assigned" || b.status === "Delayed";
-              const canReportIssue =
-                b.status === "Assigned" || b.status === "Delayed";
               return (
                 <tr key={b.id} className="border-t border-slate-100">
                   <td className="p-3">{b.id}</td>
@@ -548,38 +607,12 @@ export default function PendingRequests() {
                   <td className="p-3">
                     <StatusBadge status={b.status} />
                   </td>
-                  <td className="p-3">
-                    {!isOic ? (
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          disabled={busyId === b.id || !canReassignVehicle}
-                          onClick={() => canReassignVehicle && openReassignModal(b)}
-                          className={`px-3 py-1 rounded disabled:opacity-40 ${
-                            canReassignVehicle
-                              ? "bg-slate-200 hover:bg-slate-300 text-slate-800"
-                              : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                          }`}
-                        >
-                          Reassign Vehicle
-                        </button>
-                        <button
-                          disabled={busyId === b.id || !canReportIssue}
-                          onClick={() => canReportIssue && setReportIssueBooking(b)}
-                          className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-40"
-                        >
-                          Report issue
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-slate-400 text-sm">—</span>
-                    )}
-                  </td>
                 </tr>
               );
             })}
             {!loading && upcoming.length === 0 && (
               <tr>
-                <td className="p-6 text-slate-500" colSpan={7}>
+                <td className="p-6 text-slate-500" colSpan={6}>
                   No upcoming trips.
                 </td>
               </tr>
@@ -614,29 +647,51 @@ export default function PendingRequests() {
             {!allotLoading && allotStep === 1 && (
               <div className="mb-4">
                 <div className="text-sm font-semibold text-gray-900 mb-2">
-                  Step 1: Select vehicle type
+                  Step 1: Select vehicle type (passengers: {allotBooking.passenger_count ?? "-"})
                 </div>
                 <div className="max-h-64 overflow-auto grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {(allotSummary || []).map((t) => (
-                    <button
-                      key={t.vehicle_type}
-                      type="button"
-                      onClick={() => {
-                        setSelectedVehicleType(t.vehicle_type);
-                        loadVehicleType(allotBooking, t.vehicle_type);
-                      }}
-                      className={`text-left border rounded-lg px-3 py-2 text-sm ${
-                        selectedVehicleType === t.vehicle_type
-                          ? "border-blue-600 bg-blue-50"
-                          : "border-gray-200 hover:border-blue-400"
-                      }`}
-                    >
-                      <div className="font-semibold text-gray-900">{t.vehicle_type}</div>
-                      <div className="text-gray-600 text-xs mt-0.5">
-                        Available: {t.available_count} • Booked: {t.booked_count}
-                      </div>
-                    </button>
-                  ))}
+                  {(allotSummary || [])
+                    .filter((t) => {
+                      const pc = Number(allotBooking?.passenger_count) || 0;
+                      const cap = Number(t.passenger_capacity) || 0;
+                      if (pc && cap && pc > cap) return false;
+                      return true;
+                    })
+                    .map((t) => {
+                      const noAvailability = Number(t.available_count) === 0;
+                      return (
+                        <button
+                          key={t.vehicle_type}
+                          type="button"
+                          onClick={() => {
+                            if (noAvailability) return;
+                            setSelectedVehicleType(t.vehicle_type);
+                            loadVehicleType(allotBooking, t.vehicle_type);
+                          }}
+                          disabled={noAvailability}
+                          className={`text-left border rounded-lg px-3 py-2 text-sm ${
+                            selectedVehicleType === t.vehicle_type
+                              ? "border-blue-600 bg-blue-50"
+                              : "border-gray-200 hover:border-blue-400"
+                          } ${noAvailability ? "opacity-60 cursor-not-allowed" : ""}`}
+                        >
+                          <div className="font-semibold text-gray-900">{t.vehicle_type}</div>
+                          <div className="text-gray-600 text-xs mt-0.5">
+                            Available: {t.available_count} • Booked: {t.booked_count}
+                          </div>
+                          {t.passenger_capacity ? (
+                            <div className="text-gray-500 text-xs mt-0.5">
+                              Capacity: {t.passenger_capacity}
+                            </div>
+                          ) : null}
+                          {noAvailability && (
+                            <div className="text-red-600 text-xs mt-1">
+                              Not available for booking (all vehicles are booked)
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
                   {(allotSummary || []).length === 0 && !allotError && (
                     <div className="text-sm text-gray-600">
                       No vehicle types returned for this date.
@@ -713,6 +768,12 @@ export default function PendingRequests() {
                     </option>
                   ))}
                 </select>
+
+                {vehicleTab === "available" && typeVehicles.available.length === 0 && (
+                  <div className="text-sm text-red-600 mt-2">
+                    This vehicle type is not available for booking (all vehicles are booked).
+                  </div>
+                )}
 
                 {vehicleTab === "booked" && (
                   <div className="text-xs text-gray-600 mt-2">
@@ -1045,7 +1106,7 @@ export default function PendingRequests() {
                         href={
                           String(oicFlow.booking.document_url).startsWith("http")
                             ? oicFlow.booking.document_url
-                            : `http://localhost:5000/${String(
+                            : `${apiOrigin()}/${String(
                                 oicFlow.booking.document_url
                               ).replace(/\\/g, "/")}`
                         }
@@ -1126,6 +1187,7 @@ export default function PendingRequests() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

@@ -1,29 +1,37 @@
 import { useEffect, useState } from "react";
 import { getUsageReport, getReportVehicleTypes } from "../../api/reportApi";
 
-function downloadCsvFromData(data) {
+function downloadCsvFromData(data, reportType = "vehicle") {
+  const isDriverReport = reportType === "driver";
+  const header = isDriverReport
+    ? "driver_name,driver_phone,total_trips,total_hours"
+    : "vehicle_id,vehicle_type,vehicle_name,total_trips,total_hours";
+
+  const filenamePrefix = isDriverReport ? "driver_usage_report" : "vehicle_usage_report";
+
   if (!data || !Array.isArray(data) || data.length === 0) {
-    const header = "vehicle_id,vehicle_type,vehicle_name,total_trips,total_hours";
     const blob = new Blob([header + "\n"], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `vehicle_usage_report_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${filenamePrefix}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     return;
   }
-  const header = "vehicle_id,vehicle_type,vehicle_name,total_trips,total_hours";
-  const rows = data.map(
-    (r) =>
-      `${r.vehicle_id},${(r.vehicle_type || "").replace(/,/g, ";")},${(r.vehicle_name || "").replace(/,/g, ";")},${r.total_trips ?? 0},${r.total_hours ?? 0}`
+
+  const rows = data.map((r) =>
+    isDriverReport
+      ? `${(r.driver_name || "").replace(/,/g, ";")},${(r.driver_phone || "").replace(/,/g, ";")},${r.total_trips ?? 0},${r.total_hours ?? 0}`
+      : `${r.vehicle_id},${(r.vehicle_type || "").replace(/,/g, ";")},${(r.vehicle_name || "").replace(/,/g, ";")},${r.total_trips ?? 0},${r.total_hours ?? 0}`
   );
+
   const csv = [header, ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `vehicle_usage_report_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `${filenamePrefix}_${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -39,6 +47,7 @@ export default function Reports() {
   const [customEnd, setCustomEnd] = useState("");
   const [vehicleTypes, setVehicleTypes] = useState([]);
   const [vehicleType, setVehicleType] = useState("");
+  const [reportType, setReportType] = useState("vehicle");
 
   useEffect(() => {
     getReportVehicleTypes()
@@ -47,7 +56,10 @@ export default function Reports() {
   }, []);
 
   const getParams = () => {
-    const params = { vehicle_type: vehicleType || undefined };
+    const params = {
+      report_type: reportType,
+      vehicle_type: reportType === "vehicle" ? vehicleType || undefined : undefined,
+    };
     if (period === "custom") {
       if (!customStart || !customEnd) return null;
       params.start_date = customStart;
@@ -90,15 +102,15 @@ export default function Reports() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `vehicle_usage_report_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `${reportType}_usage_report_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
       } else {
-        downloadCsvFromData(Array.isArray(res.data) ? res.data : report);
+        downloadCsvFromData(Array.isArray(res.data) ? res.data : report, reportType);
       }
     } catch (e) {
       if (report && report.length > 0) {
-        downloadCsvFromData(report);
+        downloadCsvFromData(report, reportType);
       } else {
         setError(e?.response?.data?.message || "Download failed");
       }
@@ -129,6 +141,17 @@ export default function Reports() {
 
       <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Report type</label>
+            <select
+              value={reportType}
+              onChange={(e) => setReportType(e.target.value)}
+              className="w-full rounded px-3 py-2 text-gray-900 bg-white"
+            >
+              <option value="vehicle">Vehicle-wise</option>
+              <option value="driver">Driver-wise</option>
+            </select>
+          </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1">Period</label>
             <select
@@ -163,21 +186,23 @@ export default function Reports() {
               </div>
             </>
           )}
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Vehicle type</label>
-            <select
-              value={vehicleType}
-              onChange={(e) => setVehicleType(e.target.value)}
-              className="w-full rounded px-3 py-2 text-gray-900 bg-white"
-            >
-              <option value="">All types</option>
-              {vehicleTypes.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
+          {reportType === "vehicle" && (
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">Vehicle type</label>
+              <select
+                value={vehicleType}
+                onChange={(e) => setVehicleType(e.target.value)}
+                className="w-full rounded px-3 py-2 text-gray-900 bg-white"
+              >
+                <option value="">All types</option>
+                {vehicleTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -187,24 +212,45 @@ export default function Reports() {
         <div className="bg-gray-50 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead className="text-left bg-gray-50">
-              <tr>
-                <th className="p-3">Vehicle ID</th>
-                <th className="p-3">Type</th>
-                <th className="p-3">Reg / Name</th>
-                <th className="p-3">Trips</th>
-                <th className="p-3">Hours</th>
-              </tr>
+              {reportType === "driver" ? (
+                <tr>
+                  <th className="p-3">Driver name</th>
+                  <th className="p-3">Driver phone</th>
+                  <th className="p-3">Trips</th>
+                  <th className="p-3">Hours</th>
+                </tr>
+              ) : (
+                <tr>
+                  <th className="p-3">Vehicle ID</th>
+                  <th className="p-3">Type</th>
+                  <th className="p-3">Reg / Name</th>
+                  <th className="p-3">Trips</th>
+                  <th className="p-3">Hours</th>
+                </tr>
+              )}
             </thead>
             <tbody>
-              {report.map((r) => (
-                <tr key={r.vehicle_id} className="border-t border-gray-100">
-                  <td className="p-3">{r.vehicle_id}</td>
-                  <td className="p-3">{r.vehicle_type || "—"}</td>
-                  <td className="p-3">{r.vehicle_name || "—"}</td>
-                  <td className="p-3">{r.total_trips ?? 0}</td>
-                  <td className="p-3">{Number(r.total_hours ?? 0).toFixed(1)}</td>
-                </tr>
-              ))}
+              {report.map((r) =>
+                reportType === "driver" ? (
+                  <tr
+                    key={`${r.driver_name || "unknown"}-${r.driver_phone || "na"}`}
+                    className="border-t border-gray-100"
+                  >
+                    <td className="p-3">{r.driver_name || "—"}</td>
+                    <td className="p-3">{r.driver_phone || "—"}</td>
+                    <td className="p-3">{r.total_trips ?? 0}</td>
+                    <td className="p-3">{Number(r.total_hours ?? 0).toFixed(1)}</td>
+                  </tr>
+                ) : (
+                  <tr key={r.vehicle_id} className="border-t border-gray-100">
+                    <td className="p-3">{r.vehicle_id}</td>
+                    <td className="p-3">{r.vehicle_type || "—"}</td>
+                    <td className="p-3">{r.vehicle_name || "—"}</td>
+                    <td className="p-3">{r.total_trips ?? 0}</td>
+                    <td className="p-3">{Number(r.total_hours ?? 0).toFixed(1)}</td>
+                  </tr>
+                )
+              )}
             </tbody>
           </table>
           {report.length === 0 && (

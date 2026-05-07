@@ -81,15 +81,9 @@ export default function AllBookings() {
             className="rounded px-3 py-2 text-black"
           >
             <option value="">All statuses</option>
-            <option value="Pending">Pending</option>
-            <option value="Approved">Approved</option>
             <option value="Assigned">Assigned</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Delayed">Delayed</option>
-            <option value="Completed">Completed</option>
-            <option value="Cancellation Requested">Cancellation Requested</option>
-            <option value="Cancelled">Cancelled</option>
             <option value="Rejected">Rejected</option>
+            <option value="Cancelled">Cancelled</option>
           </select>
           <input
             value={filters.vehicle_type}

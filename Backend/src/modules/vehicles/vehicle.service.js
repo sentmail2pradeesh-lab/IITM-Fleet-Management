@@ -119,26 +119,47 @@ const updateVehicle = async (id, {
   return result.rows[0];
 };
 
-const deleteVehicle = async (id) => {
+function httpError(message, status = 400) {
+  return Object.assign(new Error(message), { status });
+}
+
+const deleteVehicle = async (id, { force = false } = {}) => {
+  const idNum = Number(id);
+  if (Number.isNaN(idNum)) {
+    throw httpError("Invalid vehicle id", 400);
+  }
+
+  if (force) {
+    await pool.query(`UPDATE bookings SET vehicle_id = NULL WHERE vehicle_id = $1`, [idNum]);
+    const forced = await pool.query(
+      `DELETE FROM vehicles WHERE id = $1 RETURNING *`,
+      [idNum]
+    );
+    if (forced.rowCount === 0) throw httpError("Vehicle not found", 404);
+    return forced.rows[0];
+  }
+
   // check non-terminal bookings
   const bookingCheck = await pool.query(
     `SELECT id FROM bookings
      WHERE vehicle_id = $1
      AND status NOT IN ('Rejected', 'Cancelled', 'Completed')`,
-    [id]
+    [idNum]
   );
 
-  const vehicleRes = await pool.query(`SELECT status FROM vehicles WHERE id = $1`, [id]);
+  const vehicleRes = await pool.query(`SELECT status FROM vehicles WHERE id = $1`, [idNum]);
   const vehicleStatus = vehicleRes.rows?.[0]?.status;
 
   if (bookingCheck.rowCount > 0) {
     if (vehicleStatus !== "Unavailable") {
-      throw new Error(
-        "Vehicle has active bookings. Mark it as Unavailable first so affected trips can be moved for reassignment."
+      throw httpError(
+        "Vehicle has active bookings. Mark it as Unavailable first so affected trips can be moved for reassignment, or use force delete to detach all bookings from this vehicle.",
+        400
       );
     }
-    throw new Error(
-      "Vehicle still has active bookings pending reassignment. Complete reassignment from Supervisor Pending Requests and try again."
+    throw httpError(
+      "Vehicle still has active bookings pending reassignment. Complete reassignment from Supervisor Pending Requests and try again, or use force delete to detach all bookings from this vehicle.",
+      400
     );
   }
 
@@ -148,17 +169,34 @@ const deleteVehicle = async (id) => {
      SET vehicle_id = NULL
      WHERE vehicle_id = $1
        AND status IN ('Rejected', 'Cancelled', 'Completed')`,
-    [id]
+    [idNum]
   );
 
   const result = await pool.query(
     `DELETE FROM vehicles
      WHERE id = $1
      RETURNING *`,
-    [id]
+    [idNum]
   );
 
+  if (result.rowCount === 0) throw httpError("Vehicle not found", 404);
   return result.rows[0];
+};
+
+const deleteAllVehicles = async () => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`UPDATE bookings SET vehicle_id = NULL WHERE vehicle_id IS NOT NULL`);
+    const del = await client.query(`DELETE FROM vehicles RETURNING id`);
+    await client.query("COMMIT");
+    return del.rowCount;
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
 };
 
 module.exports = {
@@ -167,5 +205,6 @@ module.exports = {
   getAllVehicles,
   updateVehicle,
   updateVehicleStatus,
-  deleteVehicle
+  deleteVehicle,
+  deleteAllVehicles
 };

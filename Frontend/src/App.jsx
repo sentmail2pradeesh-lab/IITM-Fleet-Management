@@ -9,6 +9,7 @@ import VehicleSelection from "./pages/user/VehicleSelection";
 import VehicleDetails from "./pages/user/VehicleDetails";
 import BookingPage from "./pages/user/BookingPage";
 import Dashboard from "./pages/user/Dashboard";
+import GuideEmailAction from "./pages/guide/GuideEmailAction";
 
 import RequireAuth from "./routes/RequireAuth";
 import RequireRole from "./routes/RequireRole";
@@ -17,8 +18,6 @@ import PendingRequests from "./pages/approver/PendingRequests";
 import Reports from "./pages/approver/Reports";
 import AllBookings from "./pages/approver/AllBookings";
 import Vehicles from "./pages/approver/Vehicles";
-import GuideLayout from "./pages/guide/GuideLayout";
-import GuidePending from "./pages/guide/GuidePending";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import DriverDashboard from "./pages/driver/DriverDashboard";
 import UserManagement from "./pages/approver/UserManagement";
@@ -35,23 +34,18 @@ function App() {
           <Route path="/" element={<Login />} />
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/guide/recommend" element={<GuideEmailAction />} />
 
           {/* Protected Routes */}
           <Route element={<RequireAuth />}>
             {/* Requester Routes */}
             <Route element={<RequireRole role="requester" />}>
               <Route path="/home" element={<Home />} />
+              <Route path="/request" element={<BookingPage />} />
               <Route path="/vehicles" element={<VehicleSelection />} />
               <Route path="/vehicle/:id" element={<VehicleDetails />} />
               <Route path="/booking/:id" element={<BookingPage />} />
               <Route path="/dashboard" element={<Dashboard />} />
-            </Route>
-
-            {/* Guide / HoD Routes */}
-            <Route element={<RequireRole role="guide_hod" />}>
-              <Route element={<GuideLayout />}>
-                <Route path="/guide/pending" element={<GuidePending />} />
-              </Route>
             </Route>
 
             {/* Approver Routes (Transport Supervisor) */}

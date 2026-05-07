@@ -21,7 +21,7 @@ function getDateRangeForPeriod(period) {
 
 exports.getReport = async (req, res, next) => {
   try {
-    const { start_date, end_date, period, vehicle_type, download } = req.query;
+    const { start_date, end_date, period, vehicle_type, download, report_type } = req.query;
 
     let rangeStart = start_date;
     let rangeEnd = end_date;
@@ -36,18 +36,21 @@ exports.getReport = async (req, res, next) => {
       return res.status(400).json({ error: "Start and end date required, or use period=month|year" });
     }
 
-    const data = await reportService.getUsageByDateRange(
-      rangeStart,
-      rangeEnd,
-      vehicle_type || null
-    );
+    const selectedType = report_type === "driver" ? "driver" : "vehicle";
+    const data =
+      selectedType === "driver"
+        ? await reportService.getDriverUsageByDateRange(rangeStart, rangeEnd)
+        : await reportService.getUsageByDateRange(rangeStart, rangeEnd, vehicle_type || null);
 
     if (download === "true") {
-      const fields = ["vehicle_id", "vehicle_type", "vehicle_name", "total_trips", "total_hours"];
+      const fields =
+        selectedType === "driver"
+          ? ["driver_name", "driver_phone", "total_trips", "total_hours"]
+          : ["vehicle_id", "vehicle_type", "vehicle_name", "total_trips", "total_hours"];
       const parser = new Parser({ fields });
       const csv = parser.parse(data);
       res.header("Content-Type", "text/csv");
-      res.attachment("vehicle-usage-report.csv");
+      res.attachment(`${selectedType}-usage-report.csv`);
       return res.send(csv);
     }
 

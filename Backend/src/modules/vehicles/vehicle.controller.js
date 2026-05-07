@@ -4,7 +4,8 @@ const {
   getAllVehicles,
   updateVehicle,
   updateVehicleStatus,
-  deleteVehicle
+  deleteVehicle,
+  deleteAllVehicles
 } = require('./vehicle.service');
 
 const scheduleService = require("../../services/scheduleService");
@@ -221,13 +222,41 @@ Route: ${row.pickup_location} -> ${row.drop_location}`;
 
 const removeVehicle = async (req, res, next) => {
   try {
-    const vehicle = await deleteVehicle(req.params.id);
+    const force = String(req.query.force || "") === "true";
+    const vehicle = await deleteVehicle(req.params.id, { force });
 
     res.json({
       message: "Vehicle deleted successfully",
       vehicle
     });
 
+  } catch (err) {
+    next(err);
+  }
+};
+
+const removeAllVehicles = async (req, res, next) => {
+  try {
+    const force = String(req.query.force || "") === "true";
+    const phrase = String(
+      (req.body && req.body.confirmPhrase) || req.query.confirmPhrase || ""
+    ).trim();
+    if (!force) {
+      return res.status(400).json({
+        message: "Add query parameter force=true to delete every vehicle."
+      });
+    }
+    if (phrase !== "DELETE ALL VEHICLES") {
+      return res.status(400).json({
+        message:
+          'Type confirmPhrase exactly: "DELETE ALL VEHICLES" in the JSON body (or query confirmPhrase).'
+      });
+    }
+    const deleted = await deleteAllVehicles();
+    res.json({
+      message: "All vehicles deleted; booking rows were kept with vehicle unlinked.",
+      deleted
+    });
   } catch (err) {
     next(err);
   }
@@ -560,6 +589,7 @@ module.exports = {
   updateVehicleById,
   changeVehicleStatus,
   removeVehicle,
+  removeAllVehicles,
   getVehicleSchedule,
   getVehicleAvailabilitySummary,
   getVehicleAvailabilityByType,

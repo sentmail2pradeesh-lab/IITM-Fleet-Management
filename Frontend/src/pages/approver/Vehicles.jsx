@@ -3,12 +3,14 @@ import { useContext } from "react";
 import {
   addVehiclesBulk,
   deleteVehicle,
+  deleteAllVehicles,
   getVehicleBookedDates,
   listVehicles,
   setVehicleStatus,
   updateVehicle
 } from "../../api/vehicleApi";
 import { AuthContext } from "../../context/AuthContext";
+import { useTwoStepConfirm } from "../../components/TwoStepConfirm";
 
 const VEHICLE_TYPES = [
   { value: "CART-AC",       label: "Cart AC",       category: "CART" },
@@ -30,15 +32,20 @@ function apiImg(path) {
   return `http://localhost:5000/${path}`;
 }
 
+function apiErr(e, fallback) {
+  return e?.response?.data?.message || e?.response?.data?.error || fallback;
+}
+
 export default function Vehicles() {
   const { user } = useContext(AuthContext);
   const role = user?.role === "approver" ? "oic" : user?.role;
   const canAddVehicles = role === "oic";
-  const canManageFleet = role === "oic";
+  const canManageFleet = role === "oic" || role === "supervisor";
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [statusReasonById, setStatusReasonById] = useState({});
   const [filterType, setFilterType] = useState(null);
   const [bookedModal, setBookedModal] = useState(null); // vehicle row
   const [bookedLoading, setBookedLoading] = useState(false);
@@ -72,10 +79,14 @@ export default function Vehicles() {
   const editFileRef2 = useRef(null);
   const editFileRef3 = useRef(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const { confirm, dialog: confirmDialog } = useTwoStepConfirm();
+  const [forceDetachOnDelete, setForceDetachOnDelete] = useState(false);
+  const [deleteAllPhrase, setDeleteAllPhrase] = useState("");
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const filteredRows = filterType
     ? rows.filter((v) => normalizeVehicleType(v.vehicle_type) === filterType)
-    : [];
+    : rows;
 
   const refresh = async () => {
     setLoading(true);
@@ -84,7 +95,7 @@ export default function Vehicles() {
       const res = await listVehicles();
       setRows(res.data);
     } catch (e) {
-      setError(e?.response?.data?.message || "Failed to load vehicles");
+      setError(apiErr(e, "Failed to load vehicles"));
     } finally {
       setLoading(false);
     }
@@ -164,34 +175,53 @@ export default function Vehicles() {
       setImages({ image1: null, image2: null, image3: null });
       await refresh();
     } catch (e2) {
-      setError(e2?.response?.data?.message || "Failed to add vehicles");
+      setError(apiErr(e2, "Failed to add vehicles"));
     } finally {
       setSubmitting(false);
     }
   };
 
   const onDelete = async (id) => {
-    if (!confirm("Delete this vehicle?")) return;
+    const confirmed = await confirm({
+      title: "Delete Vehicle",
+      primaryMessage: "Delete this vehicle?",
+      secondaryMessage: "Final confirmation: this action will permanently remove the vehicle.",
+      confirmLabel: "Delete"
+    });
+    if (!confirmed) return;
     setBusyId(id);
     setError("");
     try {
-      await deleteVehicle(id);
+      await deleteVehicle(id, { force: forceDetachOnDelete });
       await refresh();
     } catch (e) {
-      setError(e?.response?.data?.message || "Delete failed");
+      setError(apiErr(e, "Delete failed"));
     } finally {
       setBusyId(null);
     }
   };
 
   const onStatus = async (id, status) => {
+    const reason = String(statusReasonById[id] || "").trim();
+    if (status === "Unavailable" && !reason) {
+      alert("Reason is required before marking a vehicle unavailable.");
+      return;
+    }
+    const confirmed = await confirm({
+      title: "Update Vehicle Status",
+      primaryMessage: `Are you sure you want to mark this vehicle as ${status}?`,
+      secondaryMessage: `Final confirmation: update vehicle status to ${status}?`,
+      confirmLabel: "Update"
+    });
+    if (!confirmed) return;
     setBusyId(id);
     setError("");
     try {
-      await setVehicleStatus(id, status);
+      await setVehicleStatus(id, status, reason ? { reason } : undefined);
+      setStatusReasonById((prev) => ({ ...prev, [id]: "" }));
       await refresh();
     } catch (e) {
-      setError(e?.response?.data?.message || "Status update failed");
+      setError(apiErr(e, "Status update failed"));
     } finally {
       setBusyId(null);
     }
@@ -206,7 +236,7 @@ export default function Vehicles() {
       const res = await getVehicleBookedDates(v.id);
       setBookedRows(res.data?.bookings || []);
     } catch (e) {
-      setBookedError(e?.response?.data?.message || "Failed to load booked dates");
+      setBookedError(apiErr(e, "Failed to load booked dates"));
     } finally {
       setBookedLoading(false);
     }
@@ -249,9 +279,36 @@ export default function Vehicles() {
       setEditVehicle(null);
       await refresh();
     } catch (e2) {
-      setError(e2?.response?.data?.message || "Failed to update vehicle");
+      setError(apiErr(e2, "Failed to update vehicle"));
     } finally {
       setEditSubmitting(false);
+    }
+  };
+
+  const onDeleteAll = async () => {
+    if (String(deleteAllPhrase).trim() !== "DELETE ALL VEHICLES") {
+      setError('Type DELETE ALL VEHICLES exactly to confirm.');
+      return;
+    }
+    const confirmed = await confirm({
+      title: "Delete all vehicles",
+      primaryMessage:
+        "This permanently deletes every vehicle in the fleet. Bookings remain but lose their vehicle assignment.",
+      secondaryMessage:
+        "Final confirmation: unlink all bookings from vehicles and delete all vehicle rows?",
+      confirmLabel: "Delete entire fleet"
+    });
+    if (!confirmed) return;
+    setDeletingAll(true);
+    setError("");
+    try {
+      await deleteAllVehicles("DELETE ALL VEHICLES");
+      setDeleteAllPhrase("");
+      await refresh();
+    } catch (e) {
+      setError(apiErr(e, "Delete all failed"));
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -259,9 +316,9 @@ export default function Vehicles() {
   const typeStats = uniqueTypes.map((type) => {
     const list = rows.filter((v) => normalizeVehicleType(v.vehicle_type) === type);
     const total = list.length;
-    const working = list.filter((v) => v.status !== "Unavailable").length;
-    const unavailable = list.filter((v) => v.status === "Unavailable").length;
-    return { type, total, working, unavailable };
+    const available = list.filter((v) => v.status === "Available").length;
+    const booked = list.filter((v) => v.status === "Booked").length;
+    return { type, total, available, booked };
   });
 
   return (
@@ -444,8 +501,8 @@ export default function Vehicles() {
             >
               <div className="font-semibold text-slate-900">{s.type}</div>
               <div className="text-sm text-slate-600 mt-1">Total: {s.total}</div>
-              <div className="text-sm text-green-700 font-medium">Working: {s.working}</div>
-              <div className="text-sm text-amber-700 font-medium">Unavailable: {s.unavailable}</div>
+              <div className="text-sm text-green-700 font-medium">Available: {s.available}</div>
+              <div className="text-sm text-blue-700 font-medium">Booked: {s.booked}</div>
             </button>
           ))}
         </div>
@@ -464,15 +521,25 @@ export default function Vehicles() {
         </div>
       )}
 
-      {!filterType && typeStats.length > 0 && (
-        <p className="mb-4 text-slate-600 text-sm">
-          Click a vehicle type card to view detailed vehicle list below.
-        </p>
+      {canManageFleet && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <label className="inline-flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={forceDetachOnDelete}
+              onChange={(e) => setForceDetachOnDelete(e.target.checked)}
+              className="mt-1 rounded border-slate-300"
+            />
+            <span>
+              When deleting a vehicle, unlink it from <strong>all</strong> bookings first (needed if trips are still
+              assigned to this vehicle).
+            </span>
+          </label>
+        </div>
       )}
 
       {loading && <p className="text-slate-600">Loading...</p>}
 
-      {filterType && (
       <div className="overflow-auto bg-white rounded-xl border border-slate-200 shadow-[0_8px_24px_rgba(16,24,40,0.08)]">
         <table className="w-full text-sm">
           <thead className="text-left bg-slate-50 text-slate-700">
@@ -508,9 +575,13 @@ export default function Vehicles() {
                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-900">
                       Unavailable
                     </span>
+                  ) : v.status === "Booked" ? (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                      Booked
+                    </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                      Working
+                      Available
                     </span>
                   )}
                 </td>
@@ -541,6 +612,18 @@ export default function Vehicles() {
                 </td>
                 {canManageFleet && (
                 <td className="p-3">
+                  {v.status !== "Unavailable" && (
+                    <div className="mb-2">
+                      <input
+                        value={statusReasonById[v.id] || ""}
+                        onChange={(e) =>
+                          setStatusReasonById((prev) => ({ ...prev, [v.id]: e.target.value }))
+                        }
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-xs"
+                        placeholder="Reason (required for Unavailable)"
+                      />
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <button
                       disabled={busyId === v.id}
@@ -549,20 +632,23 @@ export default function Vehicles() {
                     >
                       Edit
                     </button>
-                    <button
-                      disabled={busyId === v.id}
-                      onClick={() => onStatus(v.id, "Unavailable")}
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded disabled:opacity-60 text-xs"
-                    >
-                      Mark Unavailable
-                    </button>
-                    <button
-                      disabled={busyId === v.id}
-                      onClick={() => onStatus(v.id, "Available")}
-                      className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded disabled:opacity-60 text-xs"
-                    >
-                      Mark Working
-                    </button>
+                    {v.status === "Unavailable" ? (
+                      <button
+                        disabled={busyId === v.id}
+                        onClick={() => onStatus(v.id, "Available")}
+                        className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded disabled:opacity-60 text-xs"
+                      >
+                        Mark Available
+                      </button>
+                    ) : (
+                      <button
+                        disabled={busyId === v.id}
+                        onClick={() => onStatus(v.id, "Unavailable")}
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded disabled:opacity-60 text-xs"
+                      >
+                        Mark Unavailable
+                      </button>
+                    )}
                     <button
                       disabled={busyId === v.id}
                       onClick={() => onDelete(v.id)}
@@ -585,6 +671,35 @@ export default function Vehicles() {
           </tbody>
         </table>
       </div>
+
+      {canManageFleet && (
+        <div className="mt-6 rounded-xl border border-red-200 bg-red-50/80 p-4 text-slate-800">
+          <h3 className="font-semibold text-red-900">Delete entire fleet</h3>
+          <p className="text-sm text-slate-700 mt-1 mb-3">
+            Deletes every vehicle. Booking rows are kept with no vehicle assigned. This operation cannot be undone from
+            the UI.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[260px]">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Confirmation phrase</label>
+              <input
+                value={deleteAllPhrase}
+                onChange={(e) => setDeleteAllPhrase(e.target.value)}
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                placeholder="DELETE ALL VEHICLES"
+                autoComplete="off"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={deletingAll}
+              onClick={() => void onDeleteAll()}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
+            >
+              {deletingAll ? "Deleting..." : "Delete all vehicles"}
+            </button>
+          </div>
+        </div>
       )}
 
       {bookedModal && (
@@ -774,6 +889,7 @@ export default function Vehicles() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

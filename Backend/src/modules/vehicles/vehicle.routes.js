@@ -12,6 +12,7 @@ const {
   updateVehicleById,
   changeVehicleStatus,
   removeVehicle,
+  removeAllVehicles,
   getVehicleSchedule,
   getAvailableVehicles,
   getVehicleTypeDetails,
@@ -148,7 +149,7 @@ router.post(
 router.patch(
   '/:id',
   verifyToken,
-  allowRole(['oic', 'approver']),
+  allowRole(['oic', 'approver', 'supervisor']),
   uploadVehicleImages,
   updateVehicleById
 );
@@ -156,8 +157,19 @@ router.patch(
 router.put(
   '/:id/status',
   verifyToken,
-  allowRole(['oic', 'approver']),
+  allowRole(['oic', 'approver', 'supervisor']),
   changeVehicleStatus
+);
+
+/**
+ * Delete every vehicle (destructive). Detaches vehicle_id from all bookings.
+ * Must be registered BEFORE /:id — otherwise "all" is parsed as an id.
+ */
+router.delete(
+  "/all",
+  verifyToken,
+  allowRole(["oic", "approver", "supervisor"]),
+  removeAllVehicles
 );
 
 /**
@@ -172,7 +184,7 @@ router.put(
 router.delete(
   "/:id",
   verifyToken,
-  allowRole(["oic", "approver"]),
+  allowRole(["oic", "approver", "supervisor"]),
   removeVehicle
 );
 

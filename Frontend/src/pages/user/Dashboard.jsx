@@ -3,6 +3,7 @@ import Navbar from "../../components/Navbar";
 import StatusBadge from "../../components/StatusBadge";
 import BookingStageTracker from "../../components/BookingStageTracker";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { useTwoStepConfirm } from "../../components/TwoStepConfirm";
 import { getMyBookings, requestCancellation } from "../../api/bookingApi";
 
 function formatDT(value) {
@@ -21,6 +22,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const { confirm, dialog: confirmDialog } = useTwoStepConfirm();
 
   const hasRows = useMemo(() => bookings.length > 0, [bookings.length]);
 
@@ -80,8 +82,7 @@ export default function Dashboard() {
                 My Requests
               </h1>
               <p className="text-slate-600 text-sm mt-1">
-                Track approval status, assigned driver, and any delay/issue
-                updates.
+                Track approval status and assigned driver updates.
               </p>
             </div>
             <button
@@ -125,7 +126,6 @@ export default function Dashboard() {
                       <th className="p-4">Request</th>
                       <th className="p-4">Trip</th>
                       <th className="p-4">Status</th>
-                      <th className="p-4">Issue / Delay</th>
                       <th className="p-4">Action</th>
                     </tr>
                   </thead>
@@ -139,11 +139,16 @@ export default function Dashboard() {
                       >
                         <td className="p-4">
                           <div className="font-semibold">
-                            {b.vehicle_type || "Vehicle"}
+                            {b.vehicle_id ? `Vehicle #${b.vehicle_id}` : "Vehicle (pending allotment)"}
                           </div>
                           <div className="text-slate-500 text-xs">
                             Request ID: {b.id}
                           </div>
+                          {b.vehicle_id && b.vehicle_type && (
+                            <div className="text-slate-500 text-xs mt-1">
+                              Type: {b.vehicle_type}
+                            </div>
+                          )}
                         </td>
                         <td className="p-4">
                           <div className="text-slate-700">
@@ -155,22 +160,6 @@ export default function Dashboard() {
                         </td>
                         <td className="p-4">
                           <StatusBadge status={b.status} />
-                        </td>
-                        <td className="p-4 text-slate-700">
-                          {b.issue_text ? (
-                            <div>
-                              <div className="font-medium text-orange-100">
-                                {b.status === "Delayed"
-                                  ? "Delayed"
-                                  : "Issue reported"}
-                              </div>
-                              <div className="text-xs text-slate-500 mt-1">
-                                {b.issue_text}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
                         </td>
                         <td className="p-4">
                           <button
@@ -196,16 +185,16 @@ export default function Dashboard() {
           onClick={() => setSelected(null)}
         >
           <div
-            className="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-2xl"
+            className="bg-white rounded-2xl w-full max-w-3xl p-7 shadow-2xl border border-slate-200"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold">
-                  {selected.vehicle_type || "Booking"} request
-                </h2>
-                <p className="text-sm text-gray-600">
-                  Request ID: {selected.id}
+                <h2 className="text-2xl font-semibold text-slate-900">Request #{selected.id}</h2>
+                <p className="text-sm text-slate-600 mt-1">
+                  {selected.vehicle_id
+                    ? `Assigned vehicle #${selected.vehicle_id}`
+                    : "Vehicle allotment pending"}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -213,6 +202,13 @@ export default function Dashboard() {
                   <button
                     disabled={cancelLoading}
                     onClick={async () => {
+                      const proceed = await confirm({
+                        title: "Request Cancellation",
+                        primaryMessage: "Are you sure you want to request cancellation for this trip?",
+                        secondaryMessage: "Final confirmation: submit cancellation request?",
+                        confirmLabel: "Request"
+                      });
+                      if (!proceed) return;
                       const reason = window.prompt(
                         "Enter reason for cancellation (required):"
                       );
@@ -248,9 +244,9 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5 text-sm">
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="font-semibold mb-2">Trip</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm">
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <div className="font-semibold mb-2 text-slate-900">Trip Details</div>
                 <div>
                   <b>Start:</b> {formatDT(selected.start_time)}
                 </div>
@@ -265,8 +261,8 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="font-semibold mb-2">Status</div>
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <div className="font-semibold mb-2 text-slate-900">Approval Status</div>
                 <div className="mb-2">
                   <StatusBadge status={selected.status} />
                 </div>
@@ -276,12 +272,17 @@ export default function Dashboard() {
                 <div>
                   <b>Passengers:</b> {selected.passenger_count ?? "-"}
                 </div>
+                {selected.vehicle_id && selected.vehicle_type && (
+                  <div className="mt-2">
+                    <b>Vehicle type:</b> {selected.vehicle_type}
+                  </div>
+                )}
               </div>
             </div>
 
             {(selected.driver_name || selected.driver_phone) && (
-              <div className="bg-gray-50 rounded-xl p-4 mt-4 text-sm">
-                <div className="font-semibold mb-2">Assigned driver</div>
+              <div className="bg-slate-50 rounded-xl p-4 mt-4 text-sm border border-slate-200">
+                <div className="font-semibold mb-2 text-slate-900">Assigned Driver</div>
                 <div>
                   <b>Name:</b> {selected.driver_name || "-"}
                 </div>
@@ -291,17 +292,10 @@ export default function Dashboard() {
               </div>
             )}
 
-            {selected.issue_text && (
-              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mt-4 text-sm">
-                <div className="font-semibold mb-1 text-orange-900">
-                  Issue / delay update
-                </div>
-                <div className="text-orange-900">{selected.issue_text}</div>
-              </div>
-            )}
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

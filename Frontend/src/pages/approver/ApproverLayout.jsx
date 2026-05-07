@@ -22,6 +22,7 @@ export default function ApproverLayout() {
   const { logout, user } = useContext(AuthContext);
   const role = user?.role === "approver" ? "oic" : user?.role;
   const isOic = role === "oic";
+  const isSupervisor = role === "supervisor";
 
   return (
     <div className="min-h-screen bg-[#f4f6f9]">
