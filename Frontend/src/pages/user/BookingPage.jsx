@@ -22,6 +22,7 @@ const { register, handleSubmit, watch } = useForm({
 const [submitting,setSubmitting] = useState(false);
 const [error,setError] = useState("");
 const [success, setSuccess] = useState(false);
+const [purposeKind, setPurposeKind] = useState("");
 const returnRequired = watch("return_required");
 const [vehicleType,setVehicleType] = useState("");
 const [vehicleCapacity,setVehicleCapacity] = useState(null);
@@ -55,9 +56,27 @@ const onSubmit = async(data)=>{
       setSubmitting(false);
       return;
     }
+
+    const campus = String(tripTypeFromIntro || data.campus_type || "")
+      .trim()
+      .toLowerCase();
+    if (campus !== "inside" && campus !== "outside") {
+      setError("Trip type is missing. Please go back and choose Inside IITM or Outside IITM before booking.");
+      setSubmitting(false);
+      return;
+    }
+
+    if (!purposeKind || (purposeKind !== "institute" && purposeKind !== "project")) {
+      setError("Select exactly one purpose: Institute or Project.");
+      setSubmitting(false);
+      return;
+    }
+    const purposeValue =
+      purposeKind === "institute" ? "Institute purpose" : "Project purpose";
+
     if (
       String(vehicleType || "").toLowerCase().includes("cart") &&
-      data.campus_type === "outside"
+      campus === "outside"
     ) {
       setError("Cart booking is only allowed for Inside IITM trips.");
       setSubmitting(false);
@@ -69,6 +88,7 @@ const onSubmit = async(data)=>{
       setSubmitting(false);
       return;
     }
+
     const form = new FormData();
     if (id) form.append("vehicle_id", String(id));
     const start = new Date(data.start_time);
@@ -94,8 +114,8 @@ const onSubmit = async(data)=>{
     form.append("drop_location", data.drop_location);
     form.append("passenger_count", String(data.passenger_count));
 
-    if(data.purpose) form.append("purpose", data.purpose);
-    form.append("campus_type", tripTypeFromIntro || data.campus_type);
+    form.append("purpose", purposeValue);
+    form.append("campus_type", campus);
     form.append("hod_name", data.hod_name);
     form.append("hod_email", data.hod_email);
     form.append("return_required", String(returnRequired === "yes"));
@@ -232,14 +252,33 @@ return (
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Purpose *
-            </label>
-            <input
-              placeholder="Purpose"
-              {...register("purpose", { required: true, minLength: 3 })}
-              className="block w-full px-4 py-2 rounded border border-slate-200 text-black"
-            />
+            <span className="block text-sm font-semibold text-slate-700 mb-2">
+              Purpose * (select one)
+            </span>
+            <div className="flex flex-col sm:flex-row gap-3 text-sm text-slate-800">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="purpose_kind"
+                  value="institute"
+                  checked={purposeKind === "institute"}
+                  onChange={() => setPurposeKind("institute")}
+                  className="border-slate-300"
+                />
+                Institute purpose
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="purpose_kind"
+                  value="project"
+                  checked={purposeKind === "project"}
+                  onChange={() => setPurposeKind("project")}
+                  className="border-slate-300"
+                />
+                Project purpose
+              </label>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

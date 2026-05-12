@@ -31,19 +31,19 @@ function Login() {
       });
 
       const token = res.data.token;
-
-      // Store token immediately so protected calls work
       login({ token });
 
-      // Fetch role from backend (authoritative)
       const meRes = await getMe();
       const me = meRes.data || {};
+      login({
+        token,
+        role: me?.role || "requester",
+        id: me?.id,
+        name: me?.name,
+        email: me?.email
+      });
+
       const role = me?.role || "requester";
-      const id = me?.id;
-
-      // Persist role/id returned by backend
-      login({ token, role, id });
-
       const target =
         role === "guide_hod"
           ? "/guide/pending"

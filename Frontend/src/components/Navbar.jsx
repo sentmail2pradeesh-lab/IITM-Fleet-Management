@@ -68,15 +68,22 @@ export default function Navbar() {
                 Login
               </button>
             ) : (
-              <button
-                onClick={() => {
-                  logout();
-                  navigate("/login");
-                }}
-                className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded text-sm soft-transition-long"
-              >
-                Logout
-              </button>
+              <>
+                {user?.name ? (
+                  <span className="text-white/90 text-sm max-w-[140px] sm:max-w-[220px] truncate hidden sm:inline" title={user.name}>
+                    {user.name}
+                  </span>
+                ) : null}
+                <button
+                  onClick={() => {
+                    logout();
+                    navigate("/login");
+                  }}
+                  className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded text-sm soft-transition-long"
+                >
+                  Logout
+                </button>
+              </>
             )}
           </div>
         </div>

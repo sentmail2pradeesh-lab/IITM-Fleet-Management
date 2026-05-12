@@ -11,6 +11,8 @@ export const guideApproveBooking = (id, payload) =>
 export const guideRejectBooking = (id, payload) => http.patch(`/bookings/${id}/guide-reject`, payload);
 
 export const approveBooking = (id, payload) => http.patch(`/bookings/${id}/approve`, payload);
+export const returnToSupervisor = (id, payload) =>
+  http.patch(`/bookings/${id}/return-to-supervisor`, payload);
 export const rejectBooking = (id) => http.patch(`/bookings/${id}/reject`);
 
 export const supervisorAllot = (id, payload) =>

@@ -22,7 +22,6 @@ export default function ApproverLayout() {
   const { logout, user } = useContext(AuthContext);
   const role = user?.role === "approver" ? "oic" : user?.role;
   const isOic = role === "oic";
-  const isSupervisor = role === "supervisor";
 
   return (
     <div className="min-h-screen bg-[#f4f6f9]">
@@ -58,17 +57,28 @@ export default function ApproverLayout() {
             <NavLink to="/approver/reports">Usage reports</NavLink>
           </nav>
 
-          <div className="px-4 py-4 text-xs text-white/70 border-t border-[#2b4671] flex items-center justify-between gap-2">
-            <span>IITM Fleet Booking</span>
-            <button
-              onClick={() => {
-                logout();
-                navigate("/login");
-              }}
-              className="bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded text-[11px]"
-            >
-              Logout
-            </button>
+          <div className="px-4 py-4 text-xs text-white/70 border-t border-[#2b4671]">
+            <div className="text-[10px] text-white/50 uppercase tracking-wide mb-1">
+              IITM Fleet Booking
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className="text-sm text-white/90 font-medium truncate min-w-0 flex-1"
+                title={user?.name || ""}
+              >
+                {user?.name || "Signed in"}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  navigate("/login");
+                }}
+                className="shrink-0 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-[11px]"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </aside>
 

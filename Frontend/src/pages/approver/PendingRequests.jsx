@@ -3,13 +3,13 @@ import { useContext } from "react";
 import StatusBadge from "../../components/StatusBadge";
 import {
   approveBooking,
-  assignDriver,
   getBookingFlow,
   listPendingBookings,
   listUpcomingBookings,
   rejectBooking,
   reassignVehicle,
   reportIssue,
+  returnToSupervisor,
   supervisorAllot
 } from "../../api/bookingApi";
 import {
@@ -52,12 +52,7 @@ export default function PendingRequests() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState(null);
-  const [assignBooking, setAssignBooking] = useState(null);
-  const [assignName, setAssignName] = useState("");
-  const [assignPhone, setAssignPhone] = useState("");
-  const [assignRemarks, setAssignRemarks] = useState("");
   const [drivers, setDrivers] = useState([]);
-  const [assignSubmitting, setAssignSubmitting] = useState(false);
 
   const [reassignBooking, setReassignBooking] = useState(null);
   const [reassignVehicles, setReassignVehicles] = useState([]);
@@ -72,7 +67,6 @@ export default function PendingRequests() {
   const [actionSuccess, setActionSuccess] = useState(null);
 
   const [allotBooking, setAllotBooking] = useState(null);
-  const [allotVehicles, setAllotVehicles] = useState([]);
   const [allotSelectedVehicleId, setAllotSelectedVehicleId] = useState(null);
   const [allotDriverName, setAllotDriverName] = useState("");
   const [allotDriverPhone, setAllotDriverPhone] = useState("");
@@ -91,6 +85,9 @@ export default function PendingRequests() {
   const [oicFlowLoading, setOicFlowLoading] = useState(false);
   const [oicFlow, setOicFlow] = useState(null);
   const [oicApproveRemarks, setOicApproveRemarks] = useState("");
+  const [returnBooking, setReturnBooking] = useState(null);
+  const [returnRemarks, setReturnRemarks] = useState("");
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
   const { confirm, dialog: confirmDialog } = useTwoStepConfirm();
 
   const pending = useMemo(() => pendingRows, [pendingRows]);
@@ -168,13 +165,6 @@ export default function PendingRequests() {
     }
   };
 
-  const openAssignModal = (booking) => {
-    setAssignBooking(booking);
-    setAssignName("");
-    setAssignPhone("");
-    setAssignRemarks("");
-  };
-
   const openAllotModal = async (booking) => {
     const startDate = booking?.start_time
       ? new Date(booking.start_time).toISOString().slice(0, 10)
@@ -187,7 +177,6 @@ export default function PendingRequests() {
     setAllotSelectedVehicleId(booking.vehicle_id);
     setAllotDriverName("");
     setAllotDriverPhone("");
-    setAllotVehicles([]);
     setAllotRemarks("");
     setAllotError("");
     setAllotStep(1);
@@ -230,7 +219,6 @@ export default function PendingRequests() {
         booked: data.booked || []
       });
       setVehicleTab("available");
-      setAllotVehicles(data.available || []);
       setAllotSelectedVehicleId(null);
       setAllotStep(2);
     } catch (e) {
@@ -280,33 +268,7 @@ export default function PendingRequests() {
     }
   };
 
-  const submitAssign = async () => {
-    if (!assignBooking) return;
-    if (!assignName.trim() || !assignPhone.trim()) {
-      alert("Driver name and phone are required.");
-      return;
-    }
-    setAssignSubmitting(true);
-    setError("");
-    try {
-      await assignDriver(assignBooking.id, {
-        driver_name: assignName.trim(),
-        driver_phone: assignPhone.trim(),
-        remarks: String(assignRemarks || "").trim() || undefined
-      });
-      setActionSuccess("Driver assigned");
-      setTimeout(() => setActionSuccess(null), 350);
-      await refresh();
-      alert("Driver assigned. Driver will receive an SMS after OIC approves the booking.");
-      setAssignBooking(null);
-    } catch (e) {
-      setError(e?.response?.data?.message || "Assign driver failed");
-    } finally {
-      setAssignSubmitting(false);
-    }
-  };
-
-  const openReassignModal = async (booking) => {
+  const _openReassignModal = async (booking) => {
     const startDate = booking?.start_time
       ? new Date(booking.start_time).toISOString().slice(0, 10)
       : null;
@@ -412,6 +374,40 @@ export default function PendingRequests() {
     }
   };
 
+  const submitReturnToSupervisor = async () => {
+    if (!returnBooking) return;
+    const r = String(returnRemarks || "").trim();
+    if (r.length < 5) {
+      alert("Please enter remarks (at least 5 characters).");
+      return;
+    }
+    const confirmed = await confirm({
+      title: "Return to supervisor",
+      primaryMessage:
+        "Send this request back to the Transport Supervisor? Vehicle and driver allotment will be cleared.",
+      secondaryMessage: "Final confirmation: return this request to the supervisor now?",
+      confirmLabel: "Return"
+    });
+    if (!confirmed) return;
+    setReturnSubmitting(true);
+    setError("");
+    try {
+      await returnToSupervisor(returnBooking.id, { remarks: r });
+      setActionSuccess("Returned to supervisor");
+      setTimeout(() => setActionSuccess(null), 350);
+      setReturnBooking(null);
+      setReturnRemarks("");
+      await refresh();
+      alert(
+        "Request returned to supervisor. The requester and supervisor have been notified by email (if configured)."
+      );
+    } catch (e) {
+      setError(e?.response?.data?.message || "Return to supervisor failed");
+    } finally {
+      setReturnSubmitting(false);
+    }
+  };
+
   return (
     <div className="text-slate-800">
       <div className="flex items-center justify-between mb-4">
@@ -464,7 +460,6 @@ export default function PendingRequests() {
                     (!String(b.driver_name || "").trim() ||
                       !String(b.driver_phone || "").trim())));
               const canFinalApprove = isOic && b.status === "Pending OIC Approval";
-              const canAssignDriver = false;
               return (
                 <tr key={b.id} className="border-t border-slate-100">
                   <td className="p-3">{b.id}</td>
@@ -523,17 +518,18 @@ export default function PendingRequests() {
                           >
                             Approve allotment
                           </button>
+                          <button
+                            type="button"
+                            disabled={busyId === b.id || returnSubmitting}
+                            onClick={() => {
+                              setReturnBooking(b);
+                              setReturnRemarks("");
+                            }}
+                            className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded disabled:opacity-60 soft-transition-long"
+                          >
+                            Return to supervisor
+                          </button>
                         </>
-                      )}
-
-                      {canAssignDriver && (
-                        <button
-                          disabled={busyId === b.id}
-                          onClick={() => openAssignModal(b)}
-                          className="px-3 py-1 rounded bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-60 soft-transition-long"
-                        >
-                          Assign Driver
-                        </button>
                       )}
 
                       {isCancellation && (
@@ -849,85 +845,6 @@ export default function PendingRequests() {
         </div>
       )}
 
-      {/* Assign driver modal (deprecated by supervisor allotment flow) */}
-      {false && assignBooking && (
-        <div
-          className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-6"
-          onClick={() => setAssignBooking(null)}
-        >
-          <div
-            className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-gray-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-xl font-bold mb-4 text-gray-900">
-              Assign driver for request #{assignBooking.id}
-            </h2>
-            <div className="space-y-4 text-sm">
-              <div>
-                <label className="block text-gray-700 font-medium mb-1.5">
-                  Driver name
-                </label>
-                <select
-                  value={assignName}
-                  onChange={(e) => {
-                    const selected = drivers.find((d) => d.name === e.target.value);
-                    setAssignName(e.target.value);
-                    if (selected?.phone) setAssignPhone(selected.phone);
-                  }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 bg-white"
-                >
-                  <option value="">Select available driver</option>
-                  {drivers.map((d) => (
-                    <option key={d.id} value={d.name}>
-                      {d.name} ({d.email})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-gray-700 font-medium mb-1.5">
-                  Driver phone
-                </label>
-                <input
-                  type="tel"
-                  value={assignPhone}
-                  onChange={(e) => setAssignPhone(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 bg-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="10-digit phone number"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 font-medium mb-1.5">
-                  Remarks (optional)
-                </label>
-                <textarea
-                  value={assignRemarks}
-                  onChange={(e) => setAssignRemarks(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 bg-white min-h-[90px]"
-                  placeholder="Add any notes for audit trail..."
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <button
-                type="button"
-                onClick={() => setAssignBooking(null)}
-                className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={assignSubmitting}
-                onClick={submitAssign}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 text-sm disabled:opacity-60"
-              >
-                {assignSubmitting ? "Assigning..." : "Assign driver"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Reassign vehicle modal */}
       {reassignBooking && (
         <div
@@ -1047,6 +964,61 @@ export default function PendingRequests() {
                 className="px-4 py-2 rounded bg-amber-600 text-white hover:bg-amber-700 text-sm disabled:opacity-60"
               >
                 {reportSubmitting ? "Submitting..." : "Report issue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {returnBooking && (
+        <div
+          className="fixed inset-0 z-[85] bg-black/70 flex items-center justify-center p-6"
+          onClick={() => {
+            if (!returnSubmitting) {
+              setReturnBooking(null);
+              setReturnRemarks("");
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-gray-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
+              Return to supervisor — request #{returnBooking.id}
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              The allotment will be cleared and the supervisor can re-check and submit a new vehicle and
+              driver. The requester will be notified.
+            </p>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Remarks for supervisor &amp; requester *
+            </label>
+            <textarea
+              value={returnRemarks}
+              onChange={(e) => setReturnRemarks(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 bg-white min-h-[120px]"
+              placeholder="Explain what needs to be corrected or re-checked..."
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                disabled={returnSubmitting}
+                onClick={() => {
+                  setReturnBooking(null);
+                  setReturnRemarks("");
+                }}
+                className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={returnSubmitting || String(returnRemarks || "").trim().length < 5}
+                onClick={submitReturnToSupervisor}
+                className="px-4 py-2 rounded bg-amber-600 text-white hover:bg-amber-700 text-sm disabled:opacity-60"
+              >
+                {returnSubmitting ? "Submitting..." : "Confirm return"}
               </button>
             </div>
           </div>

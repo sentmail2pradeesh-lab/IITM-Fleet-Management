@@ -1,4 +1,5 @@
-import { createContext, useMemo, useState } from "react";
+import { createContext, useEffect, useMemo, useState } from "react";
+import { getMe } from "../api/authApi";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext();
@@ -39,13 +40,17 @@ const [user, setUser] = useState(() => {
 const login = (data) => {
   const token = data?.token;
   const payload = token ? decodeJwtPayload(token) : null;
-  const next = {
-    token,
-    role: normalizeRole(data?.role ?? payload?.role),
-    id: data?.id ?? payload?.id
-  };
-  setUser(next);
-  sessionStorage.setItem("user", JSON.stringify(next));
+  setUser((prev) => {
+    const next = {
+      token: data?.token ?? prev?.token,
+      role: normalizeRole(data?.role ?? payload?.role ?? prev?.role),
+      id: data?.id ?? payload?.id ?? prev?.id,
+      name: data?.name ?? prev?.name,
+      email: data?.email ?? prev?.email
+    };
+    sessionStorage.setItem("user", JSON.stringify(next));
+    return next;
+  });
 };
 
 const logout = () => {
@@ -54,6 +59,34 @@ const logout = () => {
 };
 
 const isAuthenticated = useMemo(() => Boolean(user?.token), [user?.token]);
+
+useEffect(() => {
+  let cancelled = false;
+  (async () => {
+    try {
+      const raw = sessionStorage.getItem("user");
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed?.token || parsed?.name) return;
+      const res = await getMe();
+      if (cancelled) return;
+      const me = res.data || {};
+      const next = {
+        ...parsed,
+        name: me.name,
+        email: me.email,
+        role: normalizeRole(me.role ?? parsed.role),
+        id: me.id ?? parsed.id
+      };
+      setUser(next);
+      sessionStorage.setItem("user", JSON.stringify(next));
+    } catch {
+      // ignore — token may be expired
+    }
+  })();
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
 return (
 
