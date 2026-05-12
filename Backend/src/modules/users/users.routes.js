@@ -3,10 +3,12 @@ const router = express.Router();
 
 const verifyToken = require("../../middleware/authMiddleware");
 const allowRole = require("../../middleware/roleMiddleware");
-const { listUsers, createUser, deleteUser } = require("./users.controller");
+const { listUsers, createUser, updateUser, deleteUser } = require("./users.controller");
 
 router.get("/", verifyToken, allowRole(["oic", "approver", "supervisor"]), listUsers);
 router.post("/", verifyToken, allowRole(["oic", "approver"]), createUser);
+
+router.patch("/:id", verifyToken, allowRole(["oic", "approver"]), updateUser);
 
 router.delete(
   "/:id",

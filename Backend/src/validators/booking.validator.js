@@ -27,9 +27,11 @@ exports.createBookingSchema = Joi.object({
     .required(),
 
   purpose: Joi.string()
-    .min(3)
-    .max(500)
-    .required(),
+    .valid("Institute purpose", "Project purpose")
+    .required()
+    .messages({
+      "any.only": "Purpose must be exactly one of: Institute purpose or Project purpose"
+    }),
 
   campus_type: Joi.string()
     .valid("inside", "outside")

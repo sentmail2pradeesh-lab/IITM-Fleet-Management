@@ -476,6 +476,119 @@ const viewUpcoming = async (req, res, next) => {
   }
 };
 
+const returnToSupervisor = async (req, res, next) => {
+  try {
+    const bookingId = req.params.id;
+    const remarks = String(req.body?.remarks || "").trim();
+    const actorRole = req.user?.role === "approver" ? "oic" : req.user?.role;
+
+    if (actorRole !== "oic") {
+      return res.status(403).json({
+        message: "Only Officer In-charge can return a request to the Transport Supervisor."
+      });
+    }
+    if (remarks.length < 5) {
+      return res.status(400).json({
+        message: "Remarks are required (at least 5 characters) when returning to supervisor."
+      });
+    }
+
+    const bookingData = await pool.query(`SELECT * FROM bookings WHERE id = $1`, [bookingId]);
+    if (bookingData.rowCount === 0) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+    const booking = bookingData.rows[0];
+
+    if (booking.status !== "Pending OIC Approval") {
+      return res.status(400).json({
+        message: `Can only return bookings awaiting OIC approval. Current status: ${booking.status}`
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE bookings
+       SET status = 'Guide Approved',
+           vehicle_id = NULL,
+           driver_name = NULL,
+           driver_phone = NULL
+       WHERE id = $1 AND status = 'Pending OIC Approval'
+       RETURNING *`,
+      [bookingId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(400).json({ message: "Could not update booking (state changed?)" });
+    }
+
+    const updatedBooking = result.rows[0];
+
+    await logAction({
+      bookingId: updatedBooking.id,
+      performedBy: req.user.id,
+      action: "OIC_RETURNED_TO_SUPERVISOR",
+      oldStatus: booking.status,
+      newStatus: "Guide Approved",
+      ip: req.ip,
+      remarks
+    });
+
+    const userResult = await pool.query(`SELECT name, email FROM users WHERE id = $1`, [
+      updatedBooking.user_id
+    ]);
+    const requester = userResult.rows[0];
+    const supervisorEmail = process.env.SUPERVISOR_EMAIL || process.env.APPROVER_EMAIL;
+    const frontendBase = getPublicFrontendBaseUrl();
+
+    try {
+      if (requester?.email) {
+        await emailService.sendEmail({
+          to: requester.email,
+          subject: "Vehicle request sent back for revision (Transport)",
+          text: `Dear ${requester.name || "user"},
+
+The Officer In-charge has returned your vehicle request to the Transport Supervisor for re-checking and re-allotment.
+
+Booking ID: ${updatedBooking.id}
+Remarks from OIC: ${remarks}
+
+You will receive further updates by email once the supervisor resubmits the allotment.
+
+Regards,
+IITM Fleet`
+        });
+      }
+    } catch (emailError) {
+      console.error("Return-to-supervisor (requester) email failed:", emailError.message);
+    }
+
+    try {
+      if (supervisorEmail) {
+        await emailService.sendEmail({
+          to: supervisorEmail,
+          subject: "Fleet booking returned by OIC — please re-allot",
+          text: `A booking was returned by the Officer In-charge for revision.
+
+Booking ID: ${updatedBooking.id}
+Requester: ${requester?.name || "-"} (${requester?.email || "-"})
+OIC remarks: ${remarks}
+
+Please open the supervisor dashboard and allot vehicle/driver again:
+${frontendBase}/approver/pending
+
+Regards,
+IITM Fleet`
+        });
+      }
+    } catch (emailError) {
+      console.error("Return-to-supervisor (supervisor) email failed:", emailError.message);
+    }
+
+    return res.json(updatedBooking);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const approve = async (req, res, next) => {
   const client = await pool.connect();
 
@@ -1357,6 +1470,7 @@ module.exports = {
   submitGuideEmailDecision,
   viewUpcoming,
   approve,
+  returnToSupervisor,
   supervisorAllot,
   reject,
   requestCancellation,

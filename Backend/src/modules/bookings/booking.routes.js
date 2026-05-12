@@ -19,6 +19,7 @@ const {
   viewGuideEmailRequest,
   submitGuideEmailDecision,
   approve,
+  returnToSupervisor,
   supervisorAllot,
   reject,
   requestCancellation,
@@ -186,6 +187,13 @@ router.patch(
   verifyToken,
   allowRole(["oic", "approver"]),
   approve
+);
+
+router.patch(
+  "/:id/return-to-supervisor",
+  verifyToken,
+  allowRole(["oic", "approver"]),
+  asyncHandler(returnToSupervisor)
 );
 
 router.put(
