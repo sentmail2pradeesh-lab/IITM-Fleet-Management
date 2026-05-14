@@ -70,21 +70,29 @@ const bookVehicle = async (req, res, next) => {
     try {
       await emailService.sendEmail({
         to: user.email,
-        subject: "Booking Request Submitted",
+        subject: "Booking Request Submitted Successfully",
         text: `
 Dear ${user.name},
 
-Your booking request has been submitted.
+Your request for Transport Service has been registered and a recommendation email has been sent to the HOD/Faculty/Guide for confirmation.
+The details of your request are as follow:
 
-Start Time: ${start_time}
-End Time: ${end_time}
-Pickup: ${pickup_location}
-Drop: ${drop_location}
+Name:            ${user.name}
+Start Time:      ${start_time}
+End Time:        ${end_time}
+Pickup:          ${pickup_location}
+Drop:            ${drop_location}
+passenger_count: ${req.body.passenger_count || "-"}
 
-Status: Pending Guide Approval
+Your request will be considered after recommendation of the guide, Guide/HoD.
 
-Regards,
-IITM Transport System
+Please note that the final allotment of the vehicle is subjected to availability of the vehicle and driver for the requested time slot.
+
+Regards
+Bus Transport Cell.
+Email: bustransport@iitm.ac.in
+Phone: 044-22574970 / 044-22575971
+
         `
       });
 
@@ -221,8 +229,9 @@ const submitGuideEmailDecision = async (req, res, next) => {
       try {
         await emailService.sendEmail({
           to: user.email,
-          subject: "Vehicle request recommended by Guide/HoD",
-          text: `Dear ${user.name},\n\nYour vehicle request has been recommended by your Guide/HoD and sent to Transport Supervisor for allotment.\n\nBooking ID: ${updatedBooking.id}\nStart: ${updatedBooking.start_time}\nEnd: ${updatedBooking.end_time}\n\nRegards,\nIITM Fleet`
+          subject: "Request Recommended by Guide/HoD successfully.",
+          text: `Dear ${user.name},\n\nYour request for Transport Service has been recommended by the Guide/HoD. You will receive an update on vehicle and driver details after allotment of the vehicle and driver by the transport Cell.\n
+Please note that the final allotment of the vehicle is subjected to availability of the vehicle and driver for the requested time slot.\n\nBooking ID: ${updatedBooking.id}\nStart: ${updatedBooking.start_time}\nEnd: ${updatedBooking.end_time}\n\nRegards,\nBus Transport Cell\nEmail: bustransport@iitm.ac.in\nPhone: 044-22574970 / 044-22575971`
         });
         if (supervisorEmail) {
           await emailService.sendEmail({

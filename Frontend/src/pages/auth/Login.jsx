@@ -82,7 +82,7 @@ function Login() {
         <div className="hidden lg:flex items-center pl-[8vw]">
           <div className="max-w-md text-white">
             <div className="flex items-center gap-3 mb-5">
-              <img src="/iitm-logo.png" alt="IITM" className="w-12 h-12" />
+              <img src="/IIT_Madras_Logo.svg.png" alt="IITM" className="w-12 h-12" />
               <div className="font-bold text-2xl leading-tight">
                 IIT Madras Fleet Booking Portal
               </div>
@@ -156,13 +156,13 @@ function Login() {
               <p>
                 Email:{" "}
                 <a className="underline" href="mailto:transport-office@iitm.ac.in">
-                  transport-office@iitm.ac.in
+                  bustransport@iitm.ac.in
                 </a>
               </p>
               <p>
                 Phone:{" "}
                 <a className="underline" href="tel:+910000000000">
-                  +91-00000-00000
+                  044-22574970 / 044-22575971
                 </a>
               </p>
             </div>

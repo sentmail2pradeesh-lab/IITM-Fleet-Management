@@ -27,9 +27,9 @@ const addVehicle = async (req, res) => {
       condition_status
     } = req.body;
 
-    const image1 = req.files?.image1?.[0]?.path || null;
-    const image2 = req.files?.image2?.[0]?.path || null;
-    const image3 = req.files?.image3?.[0]?.path || null;
+      const image1 = req.files?.image1?.[0]?.path?.replace(/\\/g, "/") || null;
+      const image2 = req.files?.image2?.[0]?.path?.replace(/\\/g, "/") || null;
+      const image3 = req.files?.image3?.[0]?.path?.replace(/\\/g, "/") || null;
 
     const vehicle = await createVehicle({
       registration_number,
@@ -86,9 +86,9 @@ const addVehiclesBulk = async (req, res) => {
       }
     }
 
-    const image1 = req.files?.image1?.[0]?.path || null;
-    const image2 = req.files?.image2?.[0]?.path || null;
-    const image3 = req.files?.image3?.[0]?.path || null;
+const image1 = req.files?.image1?.[0]?.path?.replace(/\\/g, "/") || null;
+const image2 = req.files?.image2?.[0]?.path?.replace(/\\/g, "/") || null;
+const image3 = req.files?.image3?.[0]?.path?.replace(/\\/g, "/") || null;
 
     const vehicles = await createVehiclesBulk({
       vehicle_type,
@@ -127,9 +127,9 @@ const updateVehicleById = async (req, res, next) => {
       passenger_capacity,
       condition_status
     } = req.body;
-    const image1 = req.files?.image1?.[0]?.path;
-    const image2 = req.files?.image2?.[0]?.path;
-    const image3 = req.files?.image3?.[0]?.path;
+const image1 = req.files?.image1?.[0]?.path?.replace(/\\/g, "/") || null;
+const image2 = req.files?.image2?.[0]?.path?.replace(/\\/g, "/") || null;
+const image3 = req.files?.image3?.[0]?.path?.replace(/\\/g, "/") || null;
     const vehicle = await updateVehicle(id, {
       registration_number,
       vehicle_type,

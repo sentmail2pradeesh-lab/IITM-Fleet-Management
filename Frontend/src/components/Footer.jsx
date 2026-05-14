@@ -55,7 +55,7 @@ export default function Footer() {
           {/* Logo + Bus */}
           <div className="p-6">
             <div className="flex items-center gap-3">
-              <img src="/iitm-logo.png" className="w-9 h-9" alt="IITM" />
+              <img src="/IIT_Madras_Logo.svg.png" className="w-9 h-9" alt="IITM" />
               <div>
                 <div className="font-bold text-white text-lg">IIT Madras</div>
                 <div className="text-xs text-white/60">
