@@ -1,4 +1,4 @@
-import { useContext, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar";
@@ -8,9 +8,11 @@ import LoadingSpinner from "../../components/LoadingSpinner";
 import SuccessCheck from "../../components/SuccessCheck";
 
 function Login() {
-  const { register, handleSubmit } = useForm();
+  const { register, handleSubmit, reset } = useForm({
+    defaultValues: { email: "", password: "" }
+  });
   const navigate = useNavigate();
-  const { login } = useContext(AuthContext);
+  const { login, isAuthenticated } = useContext(AuthContext);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -19,6 +21,26 @@ function Login() {
     () => "rollnumber@smail.iitm.ac.in",
     []
   );
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/home", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
+  useEffect(() => {
+    reset({ email: "", password: "" });
+  }, [reset]);
+
+  useEffect(() => {
+    const onPageShow = (e) => {
+      if (e.persisted) {
+        reset({ email: "", password: "" });
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, [reset]);
 
   const onSubmit = async (data) => {
     setSubmitting(true);
@@ -56,7 +78,7 @@ function Login() {
                 : "/home";
 
       setSuccess(true);
-      setTimeout(() => navigate(target), 350);
+      setTimeout(() => navigate(target, { replace: true }), 350);
     } catch (e) {
       setError(e?.response?.data?.message || "Login failed");
     } finally {
@@ -95,6 +117,7 @@ function Login() {
 
         <div className="flex items-center justify-center lg:justify-end pr-[8vw] px-4 py-10">
           <form
+            autoComplete="off"
             onSubmit={handleSubmit(onSubmit)}
             className="bg-white p-10 rounded-2xl w-full max-w-[430px] shadow-[0_8px_32px_rgba(0,0,0,0.18)]"
           >
@@ -104,6 +127,9 @@ function Login() {
             </p>
 
             <input
+              type="email"
+              name="login_email_field"
+              autoComplete="off"
               placeholder="Email"
               {...register("email")}
               className="w-full mb-3 px-4 py-2 rounded border border-slate-200"
@@ -111,6 +137,8 @@ function Login() {
 
             <input
               type="password"
+              name="login_password_field"
+              autoComplete="new-password"
               placeholder="Password"
               {...register("password")}
               className="w-full mb-3 px-4 py-2 rounded border border-slate-200"
@@ -155,13 +183,13 @@ function Login() {
               <p className="font-medium text-slate-700">Booking queries</p>
               <p>
                 Email:{" "}
-                <a className="underline" href="mailto:transport-office@iitm.ac.in">
+                <a className="underline" href="mailto:bustransport@iitm.ac.in">
                   bustransport@iitm.ac.in
                 </a>
               </p>
               <p>
                 Phone:{" "}
-                <a className="underline" href="tel:+910000000000">
+                <a className="underline" href="tel:04422574970">
                   044-22574970 / 044-22575971
                 </a>
               </p>

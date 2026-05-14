@@ -77,7 +77,7 @@ export default function Navbar() {
                 <button
                   onClick={() => {
                     logout();
-                    navigate("/login");
+                    navigate("/login", { replace: true });
                   }}
                   className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded text-sm soft-transition-long"
                 >

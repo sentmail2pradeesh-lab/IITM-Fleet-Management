@@ -21,6 +21,7 @@ import Vehicles from "./pages/approver/Vehicles";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import DriverDashboard from "./pages/driver/DriverDashboard";
 import UserManagement from "./pages/approver/UserManagement";
+import LocationManagement from "./pages/approver/LocationManagement";
 
 function App() {
   const LocationAware = () => {
@@ -60,6 +61,7 @@ function App() {
                 </Route>
                 <Route element={<RequireRole role={["oic", "approver"]} />}>
                   <Route path="/approver/users" element={<UserManagement />} />
+                  <Route path="/approver/locations" element={<LocationManagement />} />
                 </Route>
               </Route>
             </Route>

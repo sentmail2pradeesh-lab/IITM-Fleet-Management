@@ -95,6 +95,9 @@ app.use("/api/reports", reportRoutes);
 const userRoutes = require("./modules/users/users.routes");
 app.use("/api/users", userRoutes);
 
+const locationRoutes = require("./modules/locations/location.routes");
+app.use("/api/locations", locationRoutes);
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,

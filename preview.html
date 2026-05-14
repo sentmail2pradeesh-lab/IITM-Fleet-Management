@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IITM Fleet Booking — deployment preview &amp; requirements</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; max-width: 900px; margin: 24px auto; padding: 0 16px; color: #111; line-height: 1.5; }
+    h1 { font-size: 1.5rem; }
+    h2 { font-size: 1.15rem; margin-top: 1.75rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+    ul { margin: 0.5rem 0 0 1.25rem; }
+    code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 0.9em; }
+    .note { background: #fffbeb; border: 1px solid #fcd34d; padding: 12px 14px; border-radius: 8px; margin: 12px 0; }
+    .contact { background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 14px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>IIT Madras Fleet Booking Portal — deployment preview</h1>
+  <p>
+    This document is a static <strong>preview.html</strong> checklist for production rollout. It is not served by the
+    React app; open it directly in a browser or attach it to tender / sign-off documentation.
+  </p>
+
+  <div class="contact">
+    <strong>Official transport contact (UI and notification templates)</strong><br />
+    Email: <a href="mailto:bustransport@iitm.ac.in">bustransport@iitm.ac.in</a><br />
+    Phone: 044-22574970 / 044-22575971
+  </div>
+
+  <h2>1. LDAP integration (requirement)</h2>
+  <p>
+    The current production login path uses email and password stored in the application database (<code>POST /api/auth/login</code>
+    with bcrypt verification). For institute single sign-on, the following is required:
+  </p>
+  <ul>
+    <li>
+      <strong>Directory:</strong> Bind to IIT Madras LDAP (host, base DN, service account or anonymous bind as per campus policy)
+      and authenticate the user with the submitted credentials, or validate a campus SSO token.
+    </li>
+    <li>
+      <strong>Mapping:</strong> Map LDAP attributes (for example <code>mail</code>, <code>uid</code>, <code>cn</code>) to the
+      local <code>users</code> row: create-on-first-login or sync job for role assignment (<code>requester</code>, <code>guide_hod</code>, etc.).
+    </li>
+    <li>
+      <strong>Backend:</strong> Replace or wrap <code>login</code> in <code>auth.controller.js</code> with an LDAP strategy
+      (e.g. <code>ldapjs</code> or Passport LDAP), returning the same JWT shape as today so the React client does not change.
+    </li>
+    <li>
+      <strong>Security:</strong> TLS to LDAP; rate limiting on auth; no password logging; optional MFA per institute policy.
+    </li>
+    <li>
+      <strong>Fallback:</strong> Keep password reset / OTP flows only for supported non-LDAP accounts if the institute requires it.
+    </li>
+  </ul>
+
+  <h2>2. Pre-deployment verification</h2>
+  <ul>
+    <li><strong>Database:</strong> PostgreSQL reachable; backend boot runs <code>ensureSchema</code> (includes <code>fleet_locations</code>).</li>
+    <li>
+      <strong>OIC locations:</strong> Sign in as OIC → <em>Pickup / drop locations</em> → add at least one active location before
+      requesters can submit the vehicle form (backend enforces active list).
+    </li>
+    <li><strong>SMTP:</strong> <code>EMAIL_USER</code> / <code>EMAIL_PASS</code> valid; send a test from staging.</li>
+    <li>
+      <strong>Environment:</strong> <code>JWT_SECRET</code>, <code>GUIDE_ACTION_SECRET</code> (or reuse JWT secret),
+      <code>FRONTEND_PUBLIC_URL</code> (for guide email links), <code>SUPERVISOR_EMAIL</code>, <code>OIC_EMAIL</code> / <code>APPROVER_EMAIL</code>,
+      <code>ADMIN_EMAIL</code> as needed.
+    </li>
+    <li><strong>Frontend:</strong> <code>VITE_API_BASE_URL</code> points to deployed API (<code>/api</code> suffix).</li>
+    <li><strong>CORS:</strong> Production origin added in <code>app.js</code> <code>allowedOrigins</code>.</li>
+    <li><strong>HTTPS:</strong> Terminate TLS at reverse proxy; cookies / tokens only over secure transport if you migrate to cookies.</li>
+  </ul>
+
+  <h2>3. Session and browser back button</h2>
+  <p>
+    Logout clears <code>sessionStorage</code>. The login form resets on load and when the page is restored from the back-forward
+    cache (<code>pageshow</code> with <code>persisted</code>), and navigation after logout uses <code>replace: true</code> to reduce
+    history stack retention. Institute browsers may still offer saved passwords; that is controlled by browser password manager settings.
+  </p>
+
+  <h2>4. Email templates</h2>
+  <p>
+    User, guide, supervisor, OIC, and admin notifications use a common Bus Transport Cell layout (plain text and HTML Arial body)
+    with subjects prefixed <code>Sub:</code> where applicable, and the contact block above in footers and allotment mails.
+  </p>
+
+  <div class="note">
+    After pulling this release, run the frontend production build (<code>npm run build</code>) and deploy the <code>dist</code>
+    folder behind your web server, with API requests proxied to the Node backend.
+  </div>
+</body>
+</html>

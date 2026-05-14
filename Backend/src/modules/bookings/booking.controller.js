@@ -11,6 +11,10 @@ const smsNotificationService = require("../../services/smsNotificationService");
 const { isValidTransition } = require("../../utils/bookingStateValidator");
 const { logAction } = require("../../utils/auditLogger");
 const jwt = require("jsonwebtoken");
+const {
+  buildBusMail,
+  tripDetailsBlock
+} = require("../../utils/busTransportMail");
 
 function makeGuideActionToken({ bookingId, guideEmail }) {
   const secret = process.env.GUIDE_ACTION_SECRET || process.env.JWT_SECRET;
@@ -37,6 +41,54 @@ function getPublicFrontendBaseUrl() {
   ).replace(/\/+$/, "");
 }
 
+function formatTripDateForSubject(iso) {
+  try {
+    const d = new Date(String(iso));
+    if (Number.isNaN(d.getTime())) return "";
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  } catch {
+    return "";
+  }
+}
+
+async function assertPickupDropInActiveList(pickup, drop) {
+  const pu = String(pickup || "").trim();
+  const dr = String(drop || "").trim();
+  if (!pu || !dr) {
+    const e = new Error("Pickup and drop location are required.");
+    e.status = 400;
+    throw e;
+  }
+  const c = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM fleet_locations WHERE active = true`
+  );
+  if (c.rows[0].n === 0) {
+    const e = new Error(
+      "Pickup and drop locations are not configured yet. Please contact the Transport Office."
+    );
+    e.status = 503;
+    throw e;
+  }
+  const r1 = await pool.query(
+    `SELECT 1 FROM fleet_locations WHERE active = true AND LOWER(TRIM(label)) = LOWER($1) LIMIT 1`,
+    [pu]
+  );
+  const r2 = await pool.query(
+    `SELECT 1 FROM fleet_locations WHERE active = true AND LOWER(TRIM(label)) = LOWER($1) LIMIT 1`,
+    [dr]
+  );
+  if (r1.rowCount === 0 || r2.rowCount === 0) {
+    const e = new Error(
+      "Pickup and drop must be selected from the location list published by the Transport Office."
+    );
+    e.status = 400;
+    throw e;
+  }
+}
+
 
 const bookVehicle = async (req, res, next) => {
   try {
@@ -50,6 +102,8 @@ const bookVehicle = async (req, res, next) => {
     } = req.body;
 
     const filePath = req.file ? req.file.path : null;
+
+    await assertPickupDropInActiveList(pickup_location, drop_location);
 
     // Create booking
     const booking = await createBooking(
@@ -68,57 +122,54 @@ const bookVehicle = async (req, res, next) => {
 
     // Send Email to User
     try {
-      await emailService.sendEmail({
-        to: user.email,
-        subject: "Booking Request Submitted Successfully",
-        text: `
-Dear ${user.name},
-
-Your request for Transport Service has been registered and a recommendation email has been sent to the HOD/Faculty/Guide for confirmation.
-The details of your request are as follow:
-
-Name:            ${user.name}
-Start Time:      ${start_time}
-End Time:        ${end_time}
-Pickup:          ${pickup_location}
-Drop:            ${drop_location}
-passenger_count: ${req.body.passenger_count || "-"}
-
-Your request will be considered after recommendation of the guide, Guide/HoD.
-
-Please note that the final allotment of the vehicle is subjected to availability of the vehicle and driver for the requested time slot.
-
-Regards
-Bus Transport Cell.
-Email: bustransport@iitm.ac.in
-Phone: 044-22574970 / 044-22575971
-
-        `
+      const userMail = buildBusMail({
+        subjectLine: "Sub: Request submitted successfully.",
+        salutationName: user.name,
+        bodyParagraphs: [
+          "Your request for Transport Service has been registered and a recommendation email has been sent to the HOD/Faculty/Guide for confirmation. The details of your request are as follow:",
+          "Your request will be considered after recommendation of the guide, Guide/HoD.",
+          "Please note that the final allotment of the vehicle is subjected to availability of the vehicle and driver for the requested time slot."
+        ],
+        detailsBlock: tripDetailsBlock({
+          id: booking.id,
+          name: user.name,
+          start_time,
+          end_time,
+          pickup_location,
+          drop_location,
+          passenger_count: req.body.passenger_count,
+          purpose: req.body.purpose
+        }),
+        includeContactBlock: false,
+        includeSignature: true
       });
+      await emailService.sendEmail({ to: user.email, ...userMail });
 
       // Send Email to Guide / HoD (email-based recommend / not recommend)
       const token = makeGuideActionToken({ bookingId: booking.id, guideEmail: hod_email });
       const frontendBase = getPublicFrontendBaseUrl();
       const actionUrl = `${frontendBase}/guide/recommend?token=${encodeURIComponent(token)}`;
-      await emailService.sendEmail({
-        to: hod_email,
-        subject: "New Vehicle Request - Recommendation Required",
-        text: `
-New vehicle request submitted.
-
-User: ${user.name}
-Email: ${user.email}
-Guide/HoD: ${hod_name || "-"} (${hod_email || "-"})
-Start: ${start_time}
-End: ${end_time}
-Pickup: ${pickup_location}
-Drop: ${drop_location}
-
-Please review full request details and choose Recommend / Not Recommend here:
-${actionUrl}
-        `
+      const guideMail = buildBusMail({
+        subjectLine: "Sub: New vehicle request — recommendation required.",
+        salutationName: hod_name?.trim() ? hod_name.trim() : "Sir/Madam",
+        bodyParagraphs: [
+          "A new vehicle request has been submitted where your recommendation is required.",
+          "Please review the full request details using the secure link below and choose Recommend or Not Recommend."
+        ],
+        detailsBlock: `${tripDetailsBlock({
+          id: booking.id,
+          name: user.name,
+          start_time,
+          end_time,
+          pickup_location,
+          drop_location,
+          passenger_count: req.body.passenger_count,
+          purpose: req.body.purpose
+        })}\n\nGuide/HoD (as entered): ${hod_name || "-"} (${hod_email || "-"})\n\nAction link:\n${actionUrl}`,
+        includeContactBlock: false,
+        includeSignature: true
       });
-
+      await emailService.sendEmail({ to: hod_email, ...guideMail });
     } catch (emailError) {
       console.error("Email sending failed:", emailError.message);
     }
@@ -227,18 +278,48 @@ const submitGuideEmailDecision = async (req, res, next) => {
       const supervisorEmail = process.env.SUPERVISOR_EMAIL || process.env.APPROVER_EMAIL;
 
       try {
-        await emailService.sendEmail({
-          to: user.email,
-          subject: "Request Recommended by Guide/HoD successfully.",
-          text: `Dear ${user.name},\n\nYour request for Transport Service has been recommended by the Guide/HoD. You will receive an update on vehicle and driver details after allotment of the vehicle and driver by the transport Cell.\n
-Please note that the final allotment of the vehicle is subjected to availability of the vehicle and driver for the requested time slot.\n\nBooking ID: ${updatedBooking.id}\nStart: ${updatedBooking.start_time}\nEnd: ${updatedBooking.end_time}\n\nRegards,\nBus Transport Cell\nEmail: bustransport@iitm.ac.in\nPhone: 044-22574970 / 044-22575971`
+        const recUser = buildBusMail({
+          subjectLine: "Sub: Request Recommended by Guide/HoD successfully.",
+          salutationName: user.name,
+          bodyParagraphs: [
+            "Your request for Transport Service has been recommended by the Guide/HoD. You will receive an update on vehicle and driver's details after allotment of the vehicle and driver by the transport Cell.",
+            "Please note that the final allotment of the vehicle is subjected to availability of the vehicle and driver for the requested time slot."
+          ],
+          detailsBlock: tripDetailsBlock({
+            id: updatedBooking.id,
+            name: user.name,
+            start_time: updatedBooking.start_time,
+            end_time: updatedBooking.end_time,
+            pickup_location: updatedBooking.pickup_location,
+            drop_location: updatedBooking.drop_location,
+            passenger_count: updatedBooking.passenger_count,
+            purpose: updatedBooking.purpose
+          }),
+          includeContactBlock: false,
+          includeSignature: true
         });
+        await emailService.sendEmail({ to: user.email, ...recUser });
         if (supervisorEmail) {
-          await emailService.sendEmail({
-            to: supervisorEmail,
-            subject: "Guide/HoD recommended request - action required",
-            text: `Booking ID: ${updatedBooking.id}\nRequester: ${user.name} (${user.email})\nStart: ${updatedBooking.start_time}\nEnd: ${updatedBooking.end_time}\n\nPlease allot vehicle/driver in supervisor dashboard.`
+          const supMail = buildBusMail({
+            subjectLine: "Sub: Guide/HoD recommended request — supervisor action required.",
+            salutationName: "Transport Supervisor",
+            bodyParagraphs: [
+              "A booking request has been recommended by the Guide/HoD and now requires vehicle and driver allotment in the supervisor dashboard."
+            ],
+            detailsBlock: tripDetailsBlock({
+              id: updatedBooking.id,
+              name: user.name,
+              start_time: updatedBooking.start_time,
+              end_time: updatedBooking.end_time,
+              pickup_location: updatedBooking.pickup_location,
+              drop_location: updatedBooking.drop_location,
+              passenger_count: updatedBooking.passenger_count,
+              purpose: updatedBooking.purpose
+            }) + `\nRequester email: ${user.email}`,
+            includeContactBlock: false,
+            includeSignature: true
           });
+          await emailService.sendEmail({ to: supervisorEmail, ...supMail });
         }
       } catch (emailError) {
         console.error("Guide recommend email failed:", emailError.message);
@@ -269,11 +350,15 @@ Please note that the final allotment of the vehicle is subjected to availability
     const userResult = await pool.query(`SELECT name, email FROM users WHERE id = $1`, [updatedBooking.user_id]);
     const user = userResult.rows[0];
     try {
-      await emailService.sendEmail({
-        to: user.email,
-        subject: "Vehicle request not recommended by Guide/HoD",
-        text: `Dear ${user.name},\n\nYour vehicle request was not recommended by your Guide/HoD.\n\nBooking ID: ${updatedBooking.id}\nRemarks: ${remarks}\n\nRegards,\nIITM Fleet`
+      const nr = buildBusMail({
+        subjectLine: "Sub: Vehicle request not recommended by Guide/HoD.",
+        salutationName: user.name,
+        bodyParagraphs: ["Your vehicle request was not recommended by your Guide/HoD."],
+        detailsBlock: `Booking ID: ${updatedBooking.id}\nRemarks: ${remarks}`,
+        includeContactBlock: false,
+        includeSignature: true
       });
+      await emailService.sendEmail({ to: user.email, ...nr });
     } catch (emailError) {
       console.error("Guide not recommend email failed:", emailError.message);
     }
@@ -392,17 +477,48 @@ const guideApprove = async (req, res, next) => {
     const supervisorEmail = process.env.SUPERVISOR_EMAIL || process.env.APPROVER_EMAIL;
 
     try {
-      await emailService.sendEmail({
-        to: user.email,
-        subject: "Booking approved by Guide/HoD",
-        text: `Dear ${user.name},\n\nYour booking has been approved by Guide/HoD and sent to Transport Cell Supervisor for allotment.\n\nBooking ID: ${updatedBooking.id}\nVehicle ID: ${updatedBooking.vehicle_id}\nStart: ${updatedBooking.start_time}\nEnd: ${updatedBooking.end_time}\n\nRegards,\nIITM Fleet`
+      const gaUser = buildBusMail({
+        subjectLine: "Sub: Request recommended by Guide/HoD successfully.",
+        salutationName: user.name,
+        bodyParagraphs: [
+          "Your request for Transport Service has been recommended by the Guide/HoD. You will receive an update on vehicle and driver's details after allotment of the vehicle and driver by the transport Cell.",
+          "Please note that the final allotment of the vehicle is subjected to availability of the vehicle and driver for the requested time slot."
+        ],
+        detailsBlock: tripDetailsBlock({
+          id: updatedBooking.id,
+          name: user.name,
+          start_time: updatedBooking.start_time,
+          end_time: updatedBooking.end_time,
+          pickup_location: updatedBooking.pickup_location,
+          drop_location: updatedBooking.drop_location,
+          passenger_count: updatedBooking.passenger_count,
+          purpose: updatedBooking.purpose
+        }) + `\nVehicle ID (if selected): ${updatedBooking.vehicle_id || "-"}`,
+        includeContactBlock: false,
+        includeSignature: true
       });
+      await emailService.sendEmail({ to: user.email, ...gaUser });
       if (supervisorEmail) {
-        await emailService.sendEmail({
-          to: supervisorEmail,
-          subject: "Guide/HoD approved booking - action required",
-          text: `Booking ID: ${updatedBooking.id}\nRequester: ${user.name} (${user.email})\nVehicle ID: ${updatedBooking.vehicle_id}\nStart: ${updatedBooking.start_time}\nEnd: ${updatedBooking.end_time}\n\nPlease allot vehicle/driver in supervisor dashboard.`
+        const gaSup = buildBusMail({
+          subjectLine: "Sub: Guide/HoD approved booking — supervisor action required.",
+          salutationName: "Transport Supervisor",
+          bodyParagraphs: [
+            "A booking request has been approved by Guide/HoD in the portal and now requires vehicle and driver allotment."
+          ],
+          detailsBlock: tripDetailsBlock({
+            id: updatedBooking.id,
+            name: user.name,
+            start_time: updatedBooking.start_time,
+            end_time: updatedBooking.end_time,
+            pickup_location: updatedBooking.pickup_location,
+            drop_location: updatedBooking.drop_location,
+            passenger_count: updatedBooking.passenger_count,
+            purpose: updatedBooking.purpose
+          }) + `\nRequester email: ${user.email}\nVehicle ID (if selected): ${updatedBooking.vehicle_id || "-"}`,
+          includeContactBlock: false,
+          includeSignature: true
         });
+        await emailService.sendEmail({ to: supervisorEmail, ...gaSup });
       }
     } catch (emailError) {
       console.error("Guide approval email failed:", emailError.message);
@@ -461,11 +577,15 @@ const guideReject = async (req, res, next) => {
     );
     const user = userResult.rows[0];
     try {
-      await emailService.sendEmail({
-        to: user.email,
-        subject: "Booking rejected by Guide/HoD",
-        text: `Dear ${user.name},\n\nYour booking request has been rejected at Guide/HoD level.\n\nBooking ID: ${updatedBooking.id}\nRemarks: ${remarks}\n\nRegards,\nIITM Fleet`
+      const gr = buildBusMail({
+        subjectLine: "Sub: Booking rejected by Guide/HoD.",
+        salutationName: user.name,
+        bodyParagraphs: ["Your booking request has been rejected at Guide/HoD level."],
+        detailsBlock: `Booking ID: ${updatedBooking.id}\nRemarks: ${remarks}`,
+        includeContactBlock: false,
+        includeSignature: true
       });
+      await emailService.sendEmail({ to: user.email, ...gr });
     } catch (emailError) {
       console.error("Guide rejection email failed:", emailError.message);
     }
@@ -550,21 +670,18 @@ const returnToSupervisor = async (req, res, next) => {
 
     try {
       if (requester?.email) {
-        await emailService.sendEmail({
-          to: requester.email,
-          subject: "Vehicle request sent back for revision (Transport)",
-          text: `Dear ${requester.name || "user"},
-
-The Officer In-charge has returned your vehicle request to the Transport Supervisor for re-checking and re-allotment.
-
-Booking ID: ${updatedBooking.id}
-Remarks from OIC: ${remarks}
-
-You will receive further updates by email once the supervisor resubmits the allotment.
-
-Regards,
-IITM Fleet`
+        const m = buildBusMail({
+          subjectLine: "Sub: Vehicle request sent back for revision (Transport).",
+          salutationName: requester.name || "User",
+          bodyParagraphs: [
+            "The Officer In-charge has returned your vehicle request to the Transport Supervisor for re-checking and re-allotment.",
+            "You will receive further updates by email once the supervisor resubmits the allotment."
+          ],
+          detailsBlock: `Booking ID: ${updatedBooking.id}\nRemarks from OIC: ${remarks}`,
+          includeContactBlock: false,
+          includeSignature: true
         });
+        await emailService.sendEmail({ to: requester.email, ...m });
       }
     } catch (emailError) {
       console.error("Return-to-supervisor (requester) email failed:", emailError.message);
@@ -572,21 +689,17 @@ IITM Fleet`
 
     try {
       if (supervisorEmail) {
-        await emailService.sendEmail({
-          to: supervisorEmail,
-          subject: "Fleet booking returned by OIC — please re-allot",
-          text: `A booking was returned by the Officer In-charge for revision.
-
-Booking ID: ${updatedBooking.id}
-Requester: ${requester?.name || "-"} (${requester?.email || "-"})
-OIC remarks: ${remarks}
-
-Please open the supervisor dashboard and allot vehicle/driver again:
-${frontendBase}/approver/pending
-
-Regards,
-IITM Fleet`
+        const m = buildBusMail({
+          subjectLine: "Sub: Fleet booking returned by OIC — please re-allot.",
+          salutationName: "Transport Supervisor",
+          bodyParagraphs: [
+            "A booking was returned by the Officer In-charge for revision. Please open the supervisor dashboard and allot vehicle/driver again."
+          ],
+          detailsBlock: `Booking ID: ${updatedBooking.id}\nRequester: ${requester?.name || "-"} (${requester?.email || "-"})\nOIC remarks: ${remarks}\n\nDashboard:\n${frontendBase}/approver/pending`,
+          includeContactBlock: false,
+          includeSignature: true
         });
+        await emailService.sendEmail({ to: supervisorEmail, ...m });
       }
     } catch (emailError) {
       console.error("Return-to-supervisor (supervisor) email failed:", emailError.message);
@@ -689,27 +802,40 @@ const approve = async (req, res, next) => {
     const driverPhone = updatedBooking.driver_phone;
 
     try {
-      await emailService.sendEmail({
-        to: user.email,
-        subject: "Booking confirmed by Officer In-charge",
-        text: `
-Dear ${user.name},
+      const tripDate = formatTripDateForSubject(updatedBooking.start_time);
+      const subj = tripDate
+        ? `Sub: Transport service approved for ${tripDate} trip.`
+        : "Sub: Transport service approved — trip details inside.";
+      const vehicleRes = await pool.query(
+        `SELECT vehicle_type, registration_number FROM vehicles WHERE id = $1`,
+        [updatedBooking.vehicle_id]
+      );
+      const vrow = vehicleRes.rows?.[0];
+      const vehicleLines = [
+        `Vehicle ID: ${updatedBooking.vehicle_id}`,
+        vrow?.vehicle_type ? `Vehicle type: ${vrow.vehicle_type}` : null,
+        vrow?.registration_number ? `Registration: ${vrow.registration_number}` : null,
+        `Driver: ${driverName}`,
+        `Driver phone: ${driverPhone}`,
+        `Pickup: ${updatedBooking.pickup_location}`,
+        `Drop: ${updatedBooking.drop_location}`,
+        `Start: ${updatedBooking.start_time}`,
+        `End: ${updatedBooking.end_time}`
+      ]
+        .filter(Boolean)
+        .join("\n");
 
-Your booking has been approved by the Officer In-charge. Driver and vehicle are confirmed.
-
-Driver: ${driverName}
-Phone: ${driverPhone}
-
-Vehicle ID: ${updatedBooking.vehicle_id}
-Pickup: ${updatedBooking.pickup_location}
-Drop: ${updatedBooking.drop_location}
-Start: ${updatedBooking.start_time}
-End: ${updatedBooking.end_time}
-
-Regards,
-IITM Transport System
-        `
+      const allot = buildBusMail({
+        subjectLine: subj,
+        salutationName: user.name,
+        bodyParagraphs: [
+          "Your request for Transport Service has been approved by the bus transport cell. Please find the vehicle and driver details as under:"
+        ],
+        detailsBlock: vehicleLines,
+        includeContactBlock: true,
+        includeSignature: true
       });
+      await emailService.sendEmail({ to: user.email, ...allot });
     } catch (emailError) {
       console.error("OIC approval email failed:", emailError.message);
     }
@@ -852,21 +978,27 @@ const supervisorAllot = async (req, res, next) => {
 
     try {
       if (oicEmail) {
-        await emailService.sendEmail({
-          to: oicEmail,
-          subject: "Fleet booking – OIC approval required (vehicle & driver allotted)",
-          text: `Supervisor has allotted vehicle and driver. OIC approval is required.
-
-Booking ID: ${updatedBooking.id}
-Requester: ${user.name} (${user.email})
-Vehicle ID: ${updatedBooking.vehicle_id}
-Driver: ${updatedBooking.driver_name} (${updatedBooking.driver_phone})
-Start: ${updatedBooking.start_time}
-End: ${updatedBooking.end_time}
-
-Please review and approve in the OIC dashboard.
-`
+        const oicM = buildBusMail({
+          subjectLine: "Sub: OIC approval required — vehicle and driver allotted.",
+          salutationName: "Officer In-charge",
+          bodyParagraphs: [
+            "The Transport Supervisor has allotted a vehicle and driver. Your approval is required in the OIC dashboard."
+          ],
+          detailsBlock: tripDetailsBlock({
+            id: updatedBooking.id,
+            name: user.name,
+            start_time: updatedBooking.start_time,
+            end_time: updatedBooking.end_time,
+            pickup_location: updatedBooking.pickup_location,
+            drop_location: updatedBooking.drop_location,
+            passenger_count: updatedBooking.passenger_count,
+            purpose: updatedBooking.purpose
+          }) +
+            `\nRequester email: ${user.email}\nVehicle ID: ${updatedBooking.vehicle_id}\nDriver: ${updatedBooking.driver_name} (${updatedBooking.driver_phone})`,
+          includeContactBlock: false,
+          includeSignature: true
         });
+        await emailService.sendEmail({ to: oicEmail, ...oicM });
       }
     } catch (emailError) {
       console.error("OIC notify email failed:", emailError.message);
@@ -944,24 +1076,24 @@ const reject = async (req, res, next) => {
     const user = userResult.rows[0];
 
     try {
-      await emailService.sendEmail({
-        to: user.email,
-        subject: "Your Booking Has Been Rejected",
-        text: `
-Dear ${user.name},
-
-Your booking request has been ${newStatus}.
-
-Vehicle ID: ${updatedBooking.vehicle_id}
-Start Time: ${updatedBooking.start_time}
-End Time: ${updatedBooking.end_time}
-
-For clarification, please contact transport office.
-
-Regards,
-IITM Transport System
-        `
+      const rej = buildBusMail({
+        subjectLine: "Sub: Your booking request update.",
+        salutationName: user.name,
+        bodyParagraphs: [`Your booking request status is now: ${newStatus}.`],
+        detailsBlock: tripDetailsBlock({
+          id: updatedBooking.id,
+          name: user.name,
+          start_time: updatedBooking.start_time,
+          end_time: updatedBooking.end_time,
+          pickup_location: updatedBooking.pickup_location,
+          drop_location: updatedBooking.drop_location,
+          passenger_count: updatedBooking.passenger_count,
+          purpose: updatedBooking.purpose
+        }) + `\nVehicle ID: ${updatedBooking.vehicle_id || "-"}`,
+        includeContactBlock: false,
+        includeSignature: true
       });
+      await emailService.sendEmail({ to: user.email, ...rej });
     } catch (emailError) {
       console.error("Rejection email failed:", emailError.message);
     }
@@ -1025,23 +1157,24 @@ const assignDriver = async (req, res, next) => {
     const user = userResult.rows[0];
 
     try {
-      await emailService.sendEmail({
-        to: user.email,
-        subject: "Driver Assigned",
-        text: `
-Dear ${user.name},
-
-Driver has been assigned.
-
-Driver: ${driver_name}
-Phone: ${driver_phone}
-
-Trip Details:
-Pickup: ${booking.pickup_location}
-Drop: ${booking.drop_location}
-Start: ${booking.start_time}
-        `
+      const drv = buildBusMail({
+        subjectLine: "Sub: Driver assigned — trip details.",
+        salutationName: user.name,
+        bodyParagraphs: ["A driver has been assigned to your booking. Please find the trip details below."],
+        detailsBlock: `Driver: ${driver_name}\nDriver phone: ${driver_phone}\n\n${tripDetailsBlock({
+          id: booking.id,
+          name: user.name,
+          start_time: booking.start_time,
+          end_time: booking.end_time,
+          pickup_location: booking.pickup_location,
+          drop_location: booking.drop_location,
+          passenger_count: booking.passenger_count,
+          purpose: booking.purpose
+        })}`,
+        includeContactBlock: false,
+        includeSignature: true
       });
+      await emailService.sendEmail({ to: user.email, ...drv });
 
       if (process.env.ADMIN_EMAIL) {
         // Stage 4 summary: only after HOD approved (Stage 2) AND supervisor assigned vehicle/driver (Stage 3/4).
@@ -1084,16 +1217,19 @@ Start: ${booking.start_time}
 - Uploaded Document: ${booking.document_url || "-"}
 - HOD Approved By: ${hodName} (${hodEmail})
 - Vehicle Assigned: ${vehicle?.vehicle_type || booking.vehicle_type || "-"} (Vehicle ID: ${booking.vehicle_id || "-"})
-- Driver Assigned: ${driver_name} (${driver_phone})
+- Driver Assigned: ${driver_name} (${driver_phone})`;
 
-Regards,
-IITM Fleet`;
-
-        await emailService.sendEmail({
-          to: process.env.ADMIN_EMAIL,
-          subject: "Booking Summary - Admin (Vehicle & Driver Assigned)",
-          text: adminSummaryText
+        const adm = buildBusMail({
+          subjectLine: "Sub: Admin notification — vehicle and driver assigned.",
+          salutationName: "Administrator",
+          bodyParagraphs: [
+            "This is an automated summary for administrators after a driver has been assigned to a booking."
+          ],
+          detailsBlock: adminSummaryText,
+          includeContactBlock: false,
+          includeSignature: true
         });
+        await emailService.sendEmail({ to: process.env.ADMIN_EMAIL, ...adm });
       }
     } catch (emailError) {
       console.error("Email failed:", emailError.message);
@@ -1242,11 +1378,18 @@ const reassignVehicle = async (req, res) => {
 
   // Notify requester
   try {
-    await emailService.sendEmail({
-      to: booking.email,
-      subject: "Vehicle reassigned – action required",
-      text: `Dear ${booking.name},\n\nYour booking has been reassigned to a new vehicle due to delay/issue.\n\nBooking ID: ${booking.id}\nVehicle type: ${booking.vehicle_type}\nNew vehicle ID: ${vehicle_id}\nStart: ${booking.start_time}\nEnd: ${booking.end_time}\n\nDriver will be assigned shortly.\n\nRegards,\nIITM Fleet`
+    const re = buildBusMail({
+      subjectLine: "Sub: Vehicle reassigned — action required.",
+      salutationName: booking.name,
+      bodyParagraphs: [
+        "Your booking has been reassigned to a new vehicle due to a delay or operational issue.",
+        "A driver will be assigned shortly. Please monitor your email for updates."
+      ],
+      detailsBlock: `Booking ID: ${booking.id}\nPrevious vehicle type: ${booking.vehicle_type}\nNew vehicle ID: ${vehicle_id}\nStart: ${booking.start_time}\nEnd: ${booking.end_time}`,
+      includeContactBlock: false,
+      includeSignature: true
     });
+    await emailService.sendEmail({ to: booking.email, ...re });
   } catch (e) {
     console.error("Reassign notify email failed:", e.message);
   }
@@ -1308,7 +1451,7 @@ const listAllBookings = async (req, res, next) => {
       `SELECT b.*, u.name, u.email, v.vehicle_type, v.passenger_capacity
        FROM bookings b
        JOIN users u ON b.user_id = u.id
-       JOIN vehicles v ON b.vehicle_id = v.id
+       LEFT JOIN vehicles v ON b.vehicle_id = v.id
        ${where}
        ORDER BY b.created_at DESC`,
       values
@@ -1328,7 +1471,7 @@ const getBookingById = async (req, res, next) => {
       `SELECT b.*, u.name, u.email, v.vehicle_type, v.passenger_capacity
        FROM bookings b
        JOIN users u ON b.user_id = u.id
-       JOIN vehicles v ON b.vehicle_id = v.id
+       LEFT JOIN vehicles v ON b.vehicle_id = v.id
        WHERE b.id = $1
        LIMIT 1`,
       [bookingId]
@@ -1446,11 +1589,18 @@ const reportIssue = async (req, res, next) => {
       [bookingId, `Cancelled due to vehicle issue: ${String(reason).trim()}`]
     );
 
-    await emailService.sendEmail({
-      to: requesterEmail,
-      subject: "Booking cancelled – vehicle issue",
-      text: `Dear ${requesterName},\n\nYour booking has been cancelled because the assigned vehicle has an issue and cannot be used.\n\nReason: ${reason}\n\nBooking date: ${bookingDate}\nStart: ${startTime}\nEnd: ${endTime}\n\nPlease submit a new booking request (or contact the transport office if urgent).\n\nRegards,\nIITM Fleet`
-    }).catch((e) => console.error("Report-issue email failed:", e.message));
+    const iss = buildBusMail({
+      subjectLine: "Sub: Booking cancelled — vehicle issue.",
+      salutationName: requesterName,
+      bodyParagraphs: [
+        "Your booking has been cancelled because the assigned vehicle has an issue and cannot be used.",
+        "Please submit a new booking request, or contact the transport office if the trip is urgent."
+      ],
+      detailsBlock: `Reason: ${String(reason).trim()}\nBooking date: ${bookingDate}\nStart: ${startTime}\nEnd: ${endTime}`,
+      includeContactBlock: false,
+      includeSignature: true
+    });
+    await emailService.sendEmail({ to: requesterEmail, ...iss }).catch((e) => console.error("Report-issue email failed:", e.message));
 
     if (mark_unavailable) {
       await pool.query(

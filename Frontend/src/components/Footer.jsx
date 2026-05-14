@@ -31,7 +31,8 @@ export default function Footer() {
       { to: "/approver/pending", label: "Pending Requests" },
       { to: "/approver/bookings", label: "All Bookings" },
       { to: "/approver/vehicles", label: "Vehicles" },
-      { to: "/approver/users", label: "Users" }
+      { to: "/approver/users", label: "Users" },
+      { to: "/approver/locations", label: "Locations" }
     ],
     admin: [
       { to: "/admin/dashboard", label: "Admin Dashboard" }
@@ -55,7 +56,7 @@ export default function Footer() {
           {/* Logo + Bus */}
           <div className="p-6">
             <div className="flex items-center gap-3">
-              <img src="/IIT_Madras_Logo.svg.png" className="w-9 h-9" alt="IITM" />
+              <img src="/iitm-logo.png" className="w-9 h-9" alt="IITM" />
               <div>
                 <div className="font-bold text-white text-lg">IIT Madras</div>
                 <div className="text-xs text-white/60">
@@ -103,9 +104,9 @@ export default function Footer() {
                 <MailIcon />
                 <a
                   className="hover:text-white transition-colors duration-200 underline-offset-4 hover:underline"
-                  href="mailto:transport-office@iitm.ac.in"
+                  href="mailto:bustransport@iitm.ac.in"
                 >
-                  transport-office@iitm.ac.in
+                  bustransport@iitm.ac.in
                 </a>
               </div>
 
@@ -113,9 +114,9 @@ export default function Footer() {
                 <PhoneIcon />
                 <a
                   className="hover:text-white transition-colors duration-200 underline-offset-4 hover:underline"
-                  href="tel:+910000000000"
+                  href="tel:04422574970"
                 >
-                  +91-00000-00000
+                  044-22574970 / 044-22575971
                 </a>
               </div>
             </div>

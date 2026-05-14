@@ -50,6 +50,7 @@ export default function ApproverLayout() {
             <NavLink to="/approver/vehicles">Vehicles</NavLink>
             <NavLink to="/approver/bookings">All bookings</NavLink>
             {isOic && <NavLink to="/approver/users">Users (drivers/supervisors)</NavLink>}
+            {isOic && <NavLink to="/approver/locations">Pickup / drop locations</NavLink>}
 
             <div className="text-xs uppercase text-white/60 px-1 mt-4 mb-1">
               Reports
@@ -72,7 +73,7 @@ export default function ApproverLayout() {
                 type="button"
                 onClick={() => {
                   logout();
-                  navigate("/login");
+                  navigate("/login", { replace: true });
                 }}
                 className="shrink-0 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-[11px]"
               >
