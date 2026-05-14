@@ -67,7 +67,7 @@ const createBooking = async (data, userId, filePath) => {
 
 const getPendingBookings = async () => {
   const result = await pool.query(
-    `SELECT b.*, u.name, u.email, v.vehicle_type
+    `SELECT b.*, u.name, u.email, v.vehicle_type AS assigned_vehicle_type, v.passenger_capacity
      FROM bookings b
      JOIN users u ON b.user_id = u.id
      LEFT JOIN vehicles v ON b.vehicle_id = v.id
@@ -85,7 +85,7 @@ const getPendingBookings = async () => {
 
 const getUpcomingBookings = async () => {
   const result = await pool.query(
-    `SELECT b.*, u.name, u.email, v.vehicle_type
+    `SELECT b.*, u.name, u.email, v.vehicle_type AS assigned_vehicle_type, v.passenger_capacity
      FROM bookings b
      JOIN users u ON b.user_id = u.id
      LEFT JOIN vehicles v ON b.vehicle_id = v.id

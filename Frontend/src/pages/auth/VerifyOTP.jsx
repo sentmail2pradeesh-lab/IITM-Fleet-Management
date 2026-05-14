@@ -3,8 +3,9 @@ import { verifyOtpAndCreateUser } from "../../api/authApi";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar";
 import { useEffect, useMemo, useState } from "react";
+import LoadingSpinner from "../../components/LoadingSpinner";
 
-function VerifyOTP(){
+function VerifyOTP() {
   const { register, handleSubmit } = useForm();
   const location = useLocation();
   const navigate = useNavigate();
@@ -15,15 +16,15 @@ function VerifyOTP(){
   const data = useMemo(() => location.state?.data, [location.state]);
 
   useEffect(() => {
-    if (!email || !data) navigate("/login");
+    if (!email || !data) navigate("/login", { replace: true });
   }, [email, data, navigate]);
 
   if (!email || !data) return null;
 
-  const onSubmit = async(formData)=>{
+  const onSubmit = async (formData) => {
     setSubmitting(true);
     setError("");
-    try{
+    try {
       const otp = formData.otp != null ? String(formData.otp).trim() : "";
       const normalizedEmail = String(email || "").trim().toLowerCase();
       await verifyOtpAndCreateUser({
@@ -32,49 +33,62 @@ function VerifyOTP(){
         ...data
       });
       alert("Registration successful. Please login.");
-      navigate("/login");
-    }catch(e){
+      navigate("/login", { replace: true });
+    } catch (e) {
       setError(e?.response?.data?.message || "OTP verification failed");
-    }finally{
+    } finally {
       setSubmitting(false);
     }
   };
 
-  return(
+  return (
     <div
-      className="min-h-screen bg-cover bg-center flex items-center justify-center"
-      style={{backgroundImage:"url('/bus.jpg')"}}
+      className="min-h-screen relative overflow-hidden"
+      style={{
+        backgroundImage:
+          "linear-gradient(135deg, rgba(10, 20, 50, 0.72) 0%, rgba(10, 20, 50, 0.45) 100%), url('/bus-hero.svg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center"
+      }}
     >
-      <Navbar/>
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="bg-white/30 backdrop-blur-lg p-10 rounded-2xl w-[400px] shadow-xl"
-      >
-        <h2 className="text-xl font-bold mb-6 text-white">
-          Verify OTP
-        </h2>
+      <div className="absolute inset-0 bg-[#18315f]/25 mix-blend-multiply pointer-events-none" />
+      <div className="absolute inset-0 backdrop-blur-[1px] pointer-events-none" />
+      <Navbar />
 
-        <p className="text-white/90 text-sm mb-4 break-all">
-          OTP sent to: <b>{email}</b>
-        </p>
+      <div className="relative z-10 min-h-screen pt-[72px] flex items-center justify-center px-4 py-10">
+        <div className="bg-white p-10 rounded-2xl w-full max-w-[430px] shadow-[0_8px_32px_rgba(0,0,0,0.18)]">
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Verify OTP</h2>
+          <p className="text-slate-600 text-sm mb-6 break-all">
+            OTP sent to: <span className="font-medium text-slate-800">{email}</span>
+          </p>
 
-        <input
-          placeholder="Enter OTP"
-          inputMode="numeric"
-          maxLength={6}
-          {...register("otp", { required: true })}
-          className="w-full mb-3 px-4 py-2 rounded text-gray-900 bg-white border border-gray-300"
-        />
-
-        {error && <p className="text-red-200 text-sm mb-3">{error}</p>}
-
-        <button
-          disabled={submitting}
-          className="w-full bg-blue-500 text-white py-2 rounded disabled:opacity-60"
-        >
-          {submitting ? "Verifying..." : "Verify OTP"}
-        </button>
-      </form>
+          <form autoComplete="off" onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+            <input
+              placeholder="Enter OTP"
+              inputMode="numeric"
+              maxLength={6}
+              autoComplete="off"
+              {...register("otp", { required: true })}
+              className="w-full px-4 py-2 rounded border border-slate-200 text-slate-900"
+            />
+            {error && <p className="text-red-600 text-sm">{error}</p>}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full bg-blue-600 text-white py-2 rounded disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {submitting ? (
+                <>
+                  <LoadingSpinner size={16} />
+                  Verifying…
+                </>
+              ) : (
+                "Verify OTP"
+              )}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

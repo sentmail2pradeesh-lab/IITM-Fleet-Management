@@ -50,7 +50,7 @@ export default function VehicleDetails() {
       <Navbar />
 
       <div className="h-[100px] bg-[#1a2a4a] relative overflow-hidden mt-[72px]">
-        <div className="absolute inset-y-0 right-0 w-1/3 opacity-20 bg-[url('/bus.jpg')] bg-cover bg-center" />
+        <div className="absolute inset-y-0 right-0 w-1/3 opacity-20 bg-[url('/bus-hero.svg')] bg-cover bg-center" />
         <div className="max-w-5xl mx-auto h-full px-6 flex items-center">
           <h2 className="text-white text-2xl font-semibold">Vehicle Details</h2>
         </div>

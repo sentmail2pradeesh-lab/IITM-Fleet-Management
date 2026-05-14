@@ -22,6 +22,7 @@ import LoadingSpinner from "../../components/LoadingSpinner";
 import SuccessCheck from "../../components/SuccessCheck";
 import { useTwoStepConfirm } from "../../components/TwoStepConfirm";
 import { AuthContext } from "../../context/AuthContext";
+import { bookingVehicleCell } from "../../utils/bookingDisplay";
 
 function apiOrigin() {
   const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
@@ -593,7 +594,7 @@ export default function PendingRequests() {
                     <div className="text-slate-500">{b.email}</div>
                   </td>
                   <td className="p-3">
-                    {b.vehicle_type || `#${b.vehicle_id}`}
+                    {bookingVehicleCell(b)}
                     <div className="text-slate-500 text-xs">
                       Pickup: {b.pickup_location}
                     </div>
@@ -1060,7 +1061,7 @@ export default function PendingRequests() {
                     <div>End: {formatDT(oicFlow.booking.end_time)}</div>
                     <div>
                       Vehicle:{" "}
-                      {oicFlow.booking.vehicle_type || `#${oicFlow.booking.vehicle_id}`}
+                      {bookingVehicleCell(oicFlow.booking)}
                     </div>
                     <div className="mt-1">
                       Driver: {oicFlow.booking.driver_name || "-"} (

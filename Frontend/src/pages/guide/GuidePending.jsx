@@ -4,6 +4,7 @@ import {
   guideRejectBooking,
   listGuidePendingBookings
 } from "../../api/bookingApi";
+import { bookingVehicleCell } from "../../utils/bookingDisplay";
 
 function formatDT(value) {
   try {
@@ -105,9 +106,7 @@ export default function GuidePending() {
                   <div className="font-medium">{b.name}</div>
                   <div className="text-gray-600">{b.email}</div>
                 </td>
-                <td className="p-3">
-                  {b.vehicle_type || `#${b.vehicle_id}`}
-                </td>
+                <td className="p-3">{bookingVehicleCell(b)}</td>
                 <td className="p-3">{formatDT(b.start_time)}</td>
                 <td className="p-3">{formatDT(b.end_time)}</td>
                 <td className="p-3">{b.status}</td>

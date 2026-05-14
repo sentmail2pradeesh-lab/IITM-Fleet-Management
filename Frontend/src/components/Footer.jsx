@@ -54,9 +54,9 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-10">
         <div className="grid grid-cols-1 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-white/15">
           {/* Logo + Bus */}
-          <div className="p-6">
+          <div className="p-6 select-none">
             <div className="flex items-center gap-3">
-              <img src="/iitm-logo.png" className="w-9 h-9" alt="IITM" />
+              <img src="/iitm-mark.svg" className="w-9 h-9 shrink-0" alt="" />
               <div>
                 <div className="font-bold text-white text-lg">IIT Madras</div>
                 <div className="text-xs text-white/60">
@@ -74,8 +74,8 @@ export default function Footer() {
 
             <div className="mt-5 group relative rounded-lg overflow-hidden border border-white/10 shadow-sm">
               <img
-                src="/bus.jpg"
-                alt="Fleet Bus"
+                src="/bus-hero.svg"
+                alt=""
                 className="w-full h-28 object-cover transition-transform duration-300 group-hover:scale-[1.02]"
               />
               <div className="absolute inset-0 bg-gradient-to-tr from-[#1d4ed8]/25 via-transparent to-[#0ea5e9]/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

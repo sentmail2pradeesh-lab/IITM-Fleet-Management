@@ -26,12 +26,15 @@ export default function GuideLayout() {
       <div className="min-h-screen flex flex-col">
         <div className="flex flex-1 min-h-0">
           <aside className="w-64 bg-[#1a2a4a] border-r border-[#21385f] flex flex-col shrink-0 sidebar-slide-in">
-            <div className="px-4 py-5 border-b border-[#2b4671]">
+            <div className="px-4 py-5 border-b border-[#2b4671] flex items-start gap-3 select-none">
+              <img src="/iitm-mark.svg" alt="" className="w-10 h-10 shrink-0 mt-0.5" />
+              <div className="min-w-0">
               <div className="text-xs text-white/70 uppercase tracking-wide">
                 IIT Madras
               </div>
-              <div className="text-lg font-semibold text-white">
+              <div className="text-lg font-semibold text-white leading-snug">
                 Guide / HoD Panel
+              </div>
               </div>
             </div>
 
@@ -57,7 +60,7 @@ export default function GuideLayout() {
                   type="button"
                   onClick={() => {
                     logout();
-                    navigate("/login");
+                    navigate("/login", { replace: true });
                   }}
                   className="shrink-0 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-[11px]"
                 >
@@ -69,7 +72,7 @@ export default function GuideLayout() {
 
           <main className="flex-1 overflow-auto">
             <div className="h-[100px] bg-[#1a2a4a] relative overflow-hidden">
-              <div className="absolute inset-y-0 right-0 w-1/3 opacity-20 bg-[url('/bus.jpg')] bg-cover bg-center" />
+              <div className="absolute inset-y-0 right-0 w-1/3 opacity-20 bg-[url('/bus-hero.svg')] bg-cover bg-center" />
               <div className="h-full px-6 flex items-center">
                 <h1 className="text-white text-2xl font-semibold">Guide / HoD Approvals</h1>
               </div>

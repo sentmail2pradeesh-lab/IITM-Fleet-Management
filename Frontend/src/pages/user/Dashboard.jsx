@@ -5,6 +5,7 @@ import BookingStageTracker from "../../components/BookingStageTracker";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { useTwoStepConfirm } from "../../components/TwoStepConfirm";
 import { getMyBookings, requestCancellation } from "../../api/bookingApi";
+import { bookingVehicleTitle, bookingVehicleType, bookingVehicleSubtitle } from "../../utils/bookingDisplay";
 
 function formatDT(value) {
   try {
@@ -68,7 +69,7 @@ export default function Dashboard() {
       <Navbar />
 
       <div className="h-[100px] bg-[#1a2a4a] relative overflow-hidden mt-[72px]">
-        <div className="absolute inset-y-0 right-0 w-1/3 opacity-20 bg-[url('/bus.jpg')] bg-cover bg-center" />
+        <div className="absolute inset-y-0 right-0 w-1/3 opacity-20 bg-[url('/bus-hero.svg')] bg-cover bg-center" />
         <div className="max-w-6xl mx-auto h-full px-6 flex items-center">
           <h1 className="text-white text-2xl font-semibold">My Requests</h1>
         </div>
@@ -138,15 +139,13 @@ export default function Dashboard() {
                         }`}
                       >
                         <td className="p-4">
-                          <div className="font-semibold">
-                            {b.vehicle_id ? `Vehicle #${b.vehicle_id}` : "Vehicle (pending allotment)"}
-                          </div>
+                          <div className="font-semibold">{bookingVehicleTitle(b)}</div>
                           <div className="text-slate-500 text-xs">
                             Request ID: {b.id}
                           </div>
-                          {b.vehicle_id && b.vehicle_type && (
+                          {bookingVehicleSubtitle(b) && (
                             <div className="text-slate-500 text-xs mt-1">
-                              Type: {b.vehicle_type}
+                              {bookingVehicleSubtitle(b)}
                             </div>
                           )}
                         </td>
@@ -191,11 +190,10 @@ export default function Dashboard() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-semibold text-slate-900">Request #{selected.id}</h2>
-                <p className="text-sm text-slate-600 mt-1">
-                  {selected.vehicle_id
-                    ? `Assigned vehicle #${selected.vehicle_id}`
-                    : "Vehicle allotment pending"}
-                </p>
+                <p className="text-sm text-slate-600 mt-1">{bookingVehicleTitle(selected)}</p>
+                {bookingVehicleSubtitle(selected) && (
+                  <p className="text-sm text-slate-500 mt-0.5">{bookingVehicleSubtitle(selected)}</p>
+                )}
               </div>
               <div className="flex gap-2">
                 {canCancel(selected) && (
@@ -272,9 +270,13 @@ export default function Dashboard() {
                 <div>
                   <b>Passengers:</b> {selected.passenger_count ?? "-"}
                 </div>
-                {selected.vehicle_id && selected.vehicle_type && (
-                  <div className="mt-2">
-                    <b>Vehicle type:</b> {selected.vehicle_type}
+                {(bookingVehicleType(selected) || selected.vehicle_id) && (
+                  <div className="mt-2 text-slate-800">
+                    <b>Vehicle:</b>{" "}
+                    {bookingVehicleType(selected) || "—"}
+                    {selected.vehicle_id != null &&
+                      selected.vehicle_id !== "" &&
+                      ` · ID #${selected.vehicle_id}`}
                   </div>
                 )}
               </div>

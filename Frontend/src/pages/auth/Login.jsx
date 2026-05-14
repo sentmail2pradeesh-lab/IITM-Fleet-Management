@@ -91,7 +91,7 @@ function Login() {
       className="min-h-screen relative overflow-hidden"
       style={{
         backgroundImage:
-          "linear-gradient(135deg, rgba(10, 20, 50, 0.72) 0%, rgba(10, 20, 50, 0.45) 100%), url('/bus.jpg')",
+          "linear-gradient(135deg, rgba(10, 20, 50, 0.72) 0%, rgba(10, 20, 50, 0.45) 100%), url('/bus-hero.svg')",
         backgroundSize: "cover",
         backgroundPosition: "center",
       }}
@@ -101,10 +101,10 @@ function Login() {
       <Navbar />
 
       <div className="relative z-10 min-h-screen pt-[72px] grid grid-cols-1 lg:grid-cols-2">
-        <div className="hidden lg:flex items-center pl-[8vw]">
+        <div className="hidden lg:flex items-center pl-[8vw] select-none">
           <div className="max-w-md text-white">
             <div className="flex items-center gap-3 mb-5">
-              <img src="/IIT_Madras_Logo.svg.png" alt="IITM" className="w-12 h-12" />
+              <img src="/iitm-mark.svg" alt="" className="w-12 h-12" />
               <div className="font-bold text-2xl leading-tight">
                 IIT Madras Fleet Booking Portal
               </div>

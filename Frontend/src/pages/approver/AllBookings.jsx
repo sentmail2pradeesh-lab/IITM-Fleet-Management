@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import StatusBadge from "../../components/StatusBadge";
 import { listAllBookings } from "../../api/bookingApi";
+import { bookingVehicleCell } from "../../utils/bookingDisplay";
 
 function formatDT(value) {
   try {
@@ -125,9 +126,7 @@ export default function AllBookings() {
                   <div className="font-medium">{b.name}</div>
                   <div className="text-gray-600">{b.email}</div>
                 </td>
-                <td className="p-3">
-                  #{b.vehicle_id} {b.vehicle_type ? `(${b.vehicle_type})` : ""}
-                </td>
+                <td className="p-3">{bookingVehicleCell(b)}</td>
                 <td className="p-3">{formatDT(b.start_time)}</td>
                 <td className="p-3">{formatDT(b.end_time)}</td>
                 <td className="p-3">

@@ -33,8 +33,8 @@ export default function Navbar() {
       <div className={shellClass}>
         <div className="px-6 py-4 flex justify-between items-center text-white">
           <div className="flex items-center gap-3">
-            <img src="/IIT_Madras_Logo.svg.png" className="w-8" alt="IITM" />
-            <div className="leading-tight">
+            <img src="/iitm-mark.svg" className="w-8 h-8 shrink-0" alt="" />
+            <div className="leading-tight select-none">
               <div className="font-semibold">IIT Madras</div>
               <div className="text-xs text-white/80">Fleet Booking Portal</div>
             </div>

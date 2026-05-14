@@ -401,7 +401,7 @@ const viewPending = async (req, res, next) => {
     }
 
     const result = await pool.query(
-      `SELECT b.*, u.name, u.email, v.vehicle_type, v.passenger_capacity
+      `SELECT b.*, u.name, u.email, v.vehicle_type AS assigned_vehicle_type, v.passenger_capacity
        FROM bookings b
        JOIN users u ON b.user_id = u.id
        LEFT JOIN vehicles v ON b.vehicle_id = v.id
@@ -419,7 +419,7 @@ const viewGuidePending = async (req, res, next) => {
   try {
     // Show guide approvals + cancellation requests in one pending queue
     const result = await pool.query(
-      `SELECT b.*, u.name, u.email, v.vehicle_type, v.passenger_capacity
+      `SELECT b.*, u.name, u.email, v.vehicle_type AS assigned_vehicle_type, v.passenger_capacity
        FROM bookings b
        JOIN users u ON b.user_id = u.id
        LEFT JOIN vehicles v ON b.vehicle_id = v.id
@@ -1332,7 +1332,7 @@ const reassignVehicle = async (req, res) => {
   const { vehicle_id } = req.body;
 
   const bookingResult = await pool.query(
-    `SELECT b.*, u.name, u.email, v.vehicle_type
+    `SELECT b.*, u.name, u.email, v.vehicle_type AS assigned_vehicle_type
      FROM bookings b
      JOIN users u ON b.user_id = u.id
      JOIN vehicles v ON b.vehicle_id = v.id
@@ -1385,7 +1385,7 @@ const reassignVehicle = async (req, res) => {
         "Your booking has been reassigned to a new vehicle due to a delay or operational issue.",
         "A driver will be assigned shortly. Please monitor your email for updates."
       ],
-      detailsBlock: `Booking ID: ${booking.id}\nPrevious vehicle type: ${booking.vehicle_type}\nNew vehicle ID: ${vehicle_id}\nStart: ${booking.start_time}\nEnd: ${booking.end_time}`,
+      detailsBlock: `Booking ID: ${booking.id}\nPrevious vehicle type: ${booking.assigned_vehicle_type || booking.vehicle_type || "-"}\nNew vehicle ID: ${vehicle_id}\nStart: ${booking.start_time}\nEnd: ${booking.end_time}`,
       includeContactBlock: false,
       includeSignature: true
     });
@@ -1404,7 +1404,7 @@ const reassignVehicle = async (req, res) => {
 const listMyBookings = async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT b.*, v.vehicle_type, v.passenger_capacity
+      `SELECT b.*, v.vehicle_type AS assigned_vehicle_type, v.passenger_capacity
        FROM bookings b
        LEFT JOIN vehicles v ON b.vehicle_id = v.id
        WHERE b.user_id = $1
@@ -1448,7 +1448,7 @@ const listAllBookings = async (req, res, next) => {
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const result = await pool.query(
-      `SELECT b.*, u.name, u.email, v.vehicle_type, v.passenger_capacity
+      `SELECT b.*, u.name, u.email, v.vehicle_type AS assigned_vehicle_type, v.passenger_capacity
        FROM bookings b
        JOIN users u ON b.user_id = u.id
        LEFT JOIN vehicles v ON b.vehicle_id = v.id
@@ -1468,7 +1468,7 @@ const getBookingById = async (req, res, next) => {
     const bookingId = req.params.id;
 
     const result = await pool.query(
-      `SELECT b.*, u.name, u.email, v.vehicle_type, v.passenger_capacity
+      `SELECT b.*, u.name, u.email, v.vehicle_type AS assigned_vehicle_type, v.passenger_capacity
        FROM bookings b
        JOIN users u ON b.user_id = u.id
        LEFT JOIN vehicles v ON b.vehicle_id = v.id
@@ -1499,7 +1499,7 @@ const getBookingFlow = async (req, res, next) => {
 
     const bookingRes = await pool.query(
       `SELECT b.*, u.name AS requester_name, u.email AS requester_email, u.phone AS requester_phone,
-              v.vehicle_type, v.passenger_capacity
+              v.vehicle_type AS assigned_vehicle_type, v.passenger_capacity
        FROM bookings b
        JOIN users u ON b.user_id = u.id
        LEFT JOIN vehicles v ON b.vehicle_id = v.id
@@ -1555,7 +1555,7 @@ const reportIssue = async (req, res, next) => {
     }
 
     const bookingResult = await pool.query(
-      `SELECT b.*, u.name, u.email, v.vehicle_type
+      `SELECT b.*, u.name, u.email, v.vehicle_type AS assigned_vehicle_type
        FROM bookings b
        JOIN users u ON b.user_id = u.id
        JOIN vehicles v ON b.vehicle_id = v.id
@@ -1575,7 +1575,6 @@ const reportIssue = async (req, res, next) => {
     const requesterName = booking.name;
     const requesterEmail = booking.email;
     const vehicleId = booking.vehicle_id;
-    const vehicleType = booking.vehicle_type;
     const startTime = booking.start_time;
     const endTime = booking.end_time;
     const bookingDate = new Date(startTime).toISOString().slice(0, 10);
